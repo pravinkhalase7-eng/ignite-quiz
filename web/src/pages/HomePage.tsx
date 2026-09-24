@@ -9,11 +9,13 @@ import {
   PaintBucket,
   ToggleLeft,
   Plus,
+  Trash,
   Trophy,
 } from '@phosphor-icons/react';
 import type { Quiz } from '../data/quizzes';
+import { Dialog } from '../components/Dialog';
 import { LevelBars } from '../components/LevelBars';
-import { getAllQuizzes } from '../lib/storage';
+import { customQuizRemove, getAllQuizzes } from '../lib/storage';
 
 const ICONS = {
   toggle: ToggleLeft,
@@ -35,6 +37,8 @@ export function HomePage() {
   const navigate = useNavigate();
   const [levels, setLevels] = useState<number[]>([1, 2, 3]);
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [quizzes, setQuizzes] = useState(() => getAllQuizzes());
+  const [pendingDelete, setPendingDelete] = useState<Quiz | null>(null);
 
   useEffect(() => {
     const onPrompt = (event: Event) => {
@@ -45,7 +49,7 @@ export function HomePage() {
     return () => window.removeEventListener('beforeinstallprompt', onPrompt);
   }, []);
 
-  const quizzes = getAllQuizzes().filter((quiz) => levels.includes(quiz.level));
+  const visibleQuizzes = quizzes.filter((quiz) => levels.includes(quiz.level));
 
   function toggleLevel(level: number) {
     setLevels((current) => {
@@ -100,27 +104,65 @@ export function HomePage() {
       </div>
 
       <section className="card-grid">
-        {quizzes.map((quiz, index) => (
-          <QuizCard key={quiz.id} quiz={quiz} index={index} onOpen={() => navigate(`/quiz/${quiz.id}`)} />
+        {visibleQuizzes.map((quiz, index) => (
+          <QuizCard
+            key={quiz.id}
+            quiz={quiz}
+            index={index}
+            onOpen={() => navigate(`/quiz/${quiz.id}`)}
+            onDelete={quiz.id.startsWith('custom-') ? () => setPendingDelete(quiz) : undefined}
+          />
         ))}
       </section>
+
+      {pendingDelete && (
+        <Dialog
+          title="Delete quiz"
+          message={`Delete “${pendingDelete.title}”? This cannot be undone.`}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            customQuizRemove(pendingDelete.id);
+            setQuizzes(getAllQuizzes());
+            setPendingDelete(null);
+          }}
+        />
+      )}
     </main>
   );
 }
 
-function QuizCard({ quiz, index, onOpen }: { quiz: Quiz; index: number; onOpen: () => void }) {
+function QuizCard({
+  quiz,
+  index,
+  onOpen,
+  onDelete,
+}: {
+  quiz: Quiz;
+  index: number;
+  onOpen: () => void;
+  onDelete?: () => void;
+}) {
   const Icon = ICONS[quiz.icon];
   return (
-    <button className="quiz-card" type="button" style={{ animationDelay: `${index * 80}ms` }} onClick={onOpen}>
+    <article className="quiz-card" style={{ animationDelay: `${index * 80}ms` }}>
       <header>
         <span className="quiz-icon">
           <Icon size={24} />
         </span>
         <LevelBars level={quiz.level} />
       </header>
-      <h2>{quiz.title}</h2>
-      {quiz.category && <p className="quiz-category">{quiz.category}</p>}
-    </button>
+      <button className="quiz-open" type="button" onClick={onOpen}>
+        <h2>{quiz.title}</h2>
+        {quiz.category && <p className="quiz-category">{quiz.category}</p>}
+      </button>
+      {onDelete && (
+        <button className="quiz-delete" type="button" aria-label={`Delete ${quiz.title}`} onClick={onDelete}>
+          <Trash size={16} />
+        </button>
+      )}
+    </article>
   );
 }
 

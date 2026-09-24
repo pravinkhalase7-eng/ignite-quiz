@@ -45,6 +45,11 @@ export function customQuizAdd(quiz: Quiz) {
   localStorage.setItem(CUSTOM_KEY, JSON.stringify([quiz, ...current]));
 }
 
+export function customQuizRemove(id: string) {
+  const next = customQuizzesGet().filter((quiz) => quiz.id !== id);
+  localStorage.setItem(CUSTOM_KEY, JSON.stringify(next));
+}
+
 export function getAllQuizzes(): Quiz[] {
   return [...customQuizzesGet(), ...QUIZZES];
 }
