@@ -9,17 +9,15 @@ pipeline {
     stages {
         stage('Build PWA') {
             steps {
-                dir('web') {
-                    sh '''
-                        if ! command -v node >/dev/null 2>&1; then
-                            echo "Node.js is not installed on this Jenkins agent."
-                            exit 1
-                        fi
-                        node -v
-                        npm ci
-                        npm run build
-                    '''
-                }
+                sh '''
+                    docker version
+                    docker build -t ignite-quiz:latest .
+                    rm -rf web/dist
+                    mkdir -p web/dist
+                    cid=$(docker create ignite-quiz:latest)
+                    docker cp "$cid":/app/dist/. web/dist/
+                    docker rm "$cid"
+                '''
             }
         }
     }
