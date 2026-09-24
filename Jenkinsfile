@@ -27,7 +27,40 @@ pipeline {
                     docker rm -f ignite-quiz || true
                     docker run -d --name ignite-quiz -p 4173:4173 --restart unless-stopped ignite-quiz:latest
                     docker ps --filter name=ignite-quiz
-                    echo "App is running on port 4173. Open http://<this-server>:4173"
+                    edge=$(docker ps --format '{{.ID}} {{.Ports}}' | awk '/:80->80/ {print $1; exit}')
+                    if [ -z "$edge" ]; then
+                      echo "No nginx container is publishing port 80"
+                      exit 1
+                    fi
+                    docker exec "$edge" sh -c 'grep -q "server_name quiz.doxstation.com" /etc/nginx/conf.d/*.conf' \
+                      || docker exec -i "$edge" sh -c 'cat > /etc/nginx/conf.d/60-quiz.conf' <<'EOF'
+upstream ignite_quiz_app {
+    server host.docker.internal:4173;
+}
+server {
+    listen 80;
+    listen [::]:80;
+    server_name quiz.doxstation.com;
+    client_max_body_size 20m;
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+    location / {
+        proxy_pass http://ignite_quiz_app;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 120s;
+    }
+}
+EOF
+                    docker exec "$edge" nginx -t
+                    docker exec "$edge" nginx -s reload
+                    echo "http://quiz.doxstation.com/ now proxies to port 4173"
                 '''
             }
         }
