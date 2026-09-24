@@ -12,11 +12,11 @@ export function parseQuizText(raw: string): Question[] {
   const body = keySplit[0];
   const answers = keySplit.length > 1 ? parseAnswerKey(keySplit.slice(1).join('\n')) : new Map<number, number>();
 
-  const chunks = body.split(/\n(?=\d{1,3}\.\s+)/).map((chunk) => chunk.trim()).filter(Boolean);
+  const chunks = body.split(/\n(?=(?:Q\s*)?\d{1,3}\.\s+)/i).map((chunk) => chunk.trim()).filter(Boolean);
   const questions: Question[] = [];
 
   for (const chunk of chunks) {
-    const start = chunk.match(/^(\d{1,3})\.\s+([\s\S]+)$/);
+    const start = chunk.match(/^(?:Q\s*)?(\d{1,3})\.\s+([\s\S]+)$/i);
     if (!start) continue;
     const number = Number(start[1]);
     const peeled = peelInlineAnswer(start[2]);
