@@ -1,7 +1,9 @@
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Trophy } from '@phosphor-icons/react';
+import { Trophy, XCircle } from '@phosphor-icons/react';
 import type { Question } from '../data/quizzes';
 import { getQuizById } from '../lib/storage';
+
+const PASS_PERCENT = 80;
 
 type FinishState = {
   quizId?: string;
@@ -9,6 +11,8 @@ type FinishState = {
   points?: number;
   answers?: (number | null)[];
   questions?: Question[];
+  count?: number;
+  random?: boolean;
 };
 
 export function FinishPage() {
@@ -23,14 +27,30 @@ export function FinishPage() {
     return <Navigate to="/" replace />;
   }
 
+  const percent = questions.length === 0 ? 0 : Math.round((points / questions.length) * 100);
+  const passed = percent >= PASS_PERCENT;
+
+  function tryAgain() {
+    const count = state?.count ?? questions!.length;
+    const params = new URLSearchParams({ count: String(count) });
+    if (state?.random) params.set('random', '1');
+    navigate(`/quiz/${quiz!.id}?${params}`);
+  }
+
   return (
-    <main className="screen finish">
-      <header className="finish-hero">
-        <Trophy size={40} color="#00B37E" weight="duotone" />
-        <h1>Quiz complete</h1>
+    <main className={`screen finish ${passed ? 'passed' : 'failed'}`}>
+      <header className={`finish-result ${passed ? 'passed' : 'failed'}`}>
+        {passed ? (
+          <Trophy size={48} color="#00B37E" weight="duotone" />
+        ) : (
+          <XCircle size={48} color="#F75A68" weight="duotone" />
+        )}
+        <p className="finish-score">{percent}%</p>
+        <h1>{passed ? 'You passed' : 'You did not pass'}</h1>
         <p>
-          {quiz.title} · {points} of {questions.length} correct
+          {points} of {questions.length} correct. You need {PASS_PERCENT}% to pass.
         </p>
+        <p className="finish-quiz-name">{quiz.title}</p>
       </header>
 
       <section className="review-list" aria-label="Question review">
@@ -56,7 +76,12 @@ export function FinishPage() {
       </section>
 
       <div className="finish-actions">
-        <button className="btn" type="button" onClick={() => navigate('/')}>
+        {!passed && (
+          <button className="btn btn-danger" type="button" onClick={tryAgain}>
+            Try again
+          </button>
+        )}
+        <button className={passed ? 'btn' : 'btn-outline'} type="button" onClick={() => navigate('/')}>
           Back to home
         </button>
       </div>

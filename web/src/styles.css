@@ -429,7 +429,7 @@ button, a { font-family: inherit; }
   margin-top: 24px;
 }
 
-.btn, .btn-outline {
+.btn, .btn-outline, .btn-danger {
   flex: 1;
   height: 56px;
   border-radius: 6px;
@@ -472,20 +472,49 @@ button, a { font-family: inherit; }
   text-align: left;
 }
 
-.finish-hero {
-  padding: 28px 24px 4px;
+.finish-result {
+  margin: 24px 24px 0;
+  border-radius: 16px;
+  padding: 28px 20px 22px;
   text-align: center;
 }
 
-.finish-hero h1 {
-  margin: 10px 0 4px;
+.finish-result.passed {
+  background: #063526;
+  border: 1px solid var(--brand-light);
+}
+
+.finish-result.failed {
+  background: #3d1218;
+  border: 1px solid var(--danger);
+}
+
+.finish-score {
+  margin: 8px 0 0;
+  font-size: 56px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.finish-result.passed .finish-score { color: var(--brand-light); }
+.finish-result.failed .finish-score { color: var(--danger); }
+
+.finish-result h1 {
+  margin: 8px 0 6px;
   font-size: 24px;
 }
 
-.finish-hero p {
+.finish-result p {
   margin: 0;
-  color: var(--muted);
-  font-size: 14px;
+  color: var(--grey-100);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.finish-quiz-name {
+  margin-top: 8px !important;
+  color: var(--muted) !important;
+  font-size: 13px !important;
 }
 
 .review-list {
@@ -527,12 +556,23 @@ button, a { font-family: inherit; }
 .answer-line.skipped { color: var(--warning); margin-top: 6px; }
 
 .finish-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   padding: 16px 24px 28px;
 }
 
-.finish-actions .btn {
+.finish-actions .btn,
+.finish-actions .btn-outline,
+.finish-actions .btn-danger {
   width: 100%;
   flex: none;
+}
+
+.btn-danger {
+  border: 0;
+  background: var(--danger);
+  color: white;
 }
 
 .history-list { padding: 32px; display: flex; flex-direction: column; gap: 12px; }

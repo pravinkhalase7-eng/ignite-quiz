@@ -101,6 +101,10 @@ export function QuizPage() {
         points: nextPoints,
         answers: review,
         questions: quiz!.questions,
+        count: Number.isFinite(Number(searchParams.get('count'))) && Number(searchParams.get('count')) > 0
+          ? Number(searchParams.get('count'))
+          : quiz!.questions.length,
+        random: searchParams.get('random') === '1',
       },
     });
   }
