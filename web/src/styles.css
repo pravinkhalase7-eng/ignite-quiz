@@ -53,10 +53,13 @@ button, a { font-family: inherit; }
   background: var(--grey-600);
   padding: 28px 32px 24px;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   gap: 16px;
 }
+
+.header-copy { flex: 1; min-width: 0; }
+.header-end { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 
 .header h1 {
   margin: 0;
@@ -330,6 +333,14 @@ button, a { font-family: inherit; }
   overflow: auto;
   padding: 32px 24px 32px;
 }
+
+.quiz-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.quiz-title-row h2 { flex: 1; }
 
 .quiz-heading h2 {
   margin: 0;
@@ -679,6 +690,21 @@ button, a { font-family: inherit; }
 .dialog h2 { margin: 0 0 8px; font-size: 18px; }
 .dialog p { margin: 0 0 20px; color: var(--muted); }
 .dialog .footer { margin-top: 0; }
+
+.login-panel {
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-panel p { margin: 0; color: var(--muted); line-height: 1.45; }
+.login-error { color: var(--danger) !important; }
+
+.google-btn {
+  text-decoration: none;
+  justify-content: center;
+}
 
 .install {
   margin: 16px 32px 0;

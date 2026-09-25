@@ -23,12 +23,41 @@ export function historyGetAll(): HistoryEntry[] {
   }
 }
 
-export function historyAdd(entry: HistoryEntry) {
-  const current = historyGetAll();
-  localStorage.setItem(HISTORY_KEY, JSON.stringify([...current, entry]));
+export async function refreshHistory(): Promise<HistoryEntry[]> {
+  try {
+    const response = await fetch('/api/history', { credentials: 'include' });
+    if (!response.ok) return historyGetAll();
+    const list = (await response.json()) as HistoryEntry[];
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+    return list;
+  } catch {
+    return historyGetAll();
+  }
 }
 
-export function historyRemove(id: string) {
+export async function historyAdd(entry: HistoryEntry) {
+  try {
+    const response = await fetch('/api/history', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(entry),
+    });
+    if (response.ok) {
+      const stored = (await response.json()) as HistoryEntry;
+      const next = [stored, ...historyGetAll().filter((item) => item.id !== stored.id)];
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+      return;
+    }
+  } catch {
+    // Keep a local copy when the account store is unavailable.
+  }
+  const current = historyGetAll();
+  localStorage.setItem(HISTORY_KEY, JSON.stringify([entry, ...current]));
+}
+
+export async function historyRemove(id: string) {
+  await fetch(`/api/history/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
   const next = historyGetAll().filter((item) => item.id !== id);
   localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
 }
@@ -54,7 +83,7 @@ export function customQuizzesGet(): Quiz[] {
 export async function refreshCustomQuizzes(): Promise<Quiz[]> {
   const local = readLocalQuizzes();
   try {
-    const response = await fetch('/api/quizzes');
+    const response = await fetch('/api/quizzes', { credentials: 'include' });
     if (!response.ok) throw new Error('Could not load quizzes.');
     let remote = (await response.json()) as Quiz[];
     const remoteIds = new Set(remote.map((quiz) => quiz.id));
@@ -62,6 +91,7 @@ export async function refreshCustomQuizzes(): Promise<Quiz[]> {
       if (!quiz.id.startsWith('custom-') || remoteIds.has(quiz.id)) continue;
       const saved = await fetch('/api/quizzes', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(quiz),
       });
@@ -80,6 +110,7 @@ export async function refreshCustomQuizzes(): Promise<Quiz[]> {
 export async function customQuizAdd(quiz: Quiz) {
   const response = await fetch('/api/quizzes', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(quiz),
   });
@@ -89,7 +120,7 @@ export async function customQuizAdd(quiz: Quiz) {
 }
 
 export async function customQuizRemove(id: string) {
-  const response = await fetch(`/api/quizzes/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const response = await fetch(`/api/quizzes/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
   if (!response.ok && response.status !== 204) throw new Error('Could not delete this quiz.');
   rememberQuizzes(customQuizzesGet().filter((quiz) => quiz.id !== id));
 }

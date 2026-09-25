@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HouseLine, Trash } from '@phosphor-icons/react';
-import { historyGetAll, historyRemove, type HistoryEntry } from '../lib/storage';
+import { ArrowLeft, Trash } from '@phosphor-icons/react';
+import { historyGetAll, historyRemove, refreshHistory, type HistoryEntry } from '../lib/storage';
 import { LevelBars } from '../components/LevelBars';
 import { Dialog } from '../components/Dialog';
 
@@ -10,23 +10,27 @@ export function HistoryPage() {
   const [history, setHistory] = useState<HistoryEntry[]>(() => historyGetAll());
   const [pendingId, setPendingId] = useState<string | null>(null);
 
+  useEffect(() => {
+    refreshHistory().then(setHistory);
+  }, []);
+
   function remove() {
     if (!pendingId) return;
-    historyRemove(pendingId);
-    setHistory(historyGetAll());
+    const id = pendingId;
     setPendingId(null);
+    historyRemove(id).then(() => setHistory(historyGetAll()));
   }
 
   return (
     <main className="screen">
       <header className="header">
-        <div>
+        <button className="icon-button" type="button" aria-label="Back to home" onClick={() => navigate('/')}>
+          <ArrowLeft size={28} />
+        </button>
+        <div className="header-copy">
           <h1>History</h1>
           <p>{'Your history of\ncompleted quizzes'}</p>
         </div>
-        <button className="icon-button" type="button" aria-label="Back to home" onClick={() => navigate('/')}>
-          <HouseLine size={28} />
-        </button>
       </header>
 
       {history.length === 0 ? (

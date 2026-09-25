@@ -25,7 +25,12 @@ pipeline {
             steps {
                 sh '''
                     docker rm -f ignite-quiz || true
-                    docker run -d --name ignite-quiz -p 4173:4173 -v ignite-quiz-data:/app/data --restart unless-stopped ignite-quiz:latest
+                    pgnet=$(docker inspect aiteacher-postgres --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}')
+                    netarg=""
+                    if [ -n "$pgnet" ]; then netarg="--network $pgnet"; fi
+                    envarg=""
+                    if [ -f /var/jenkins_home/ignite-quiz.env ]; then envarg="--env-file /var/jenkins_home/ignite-quiz.env"; fi
+                    docker run -d --name ignite-quiz -p 4173:4173 $netarg $envarg -v ignite-quiz-data:/app/data --restart unless-stopped ignite-quiz:latest
                     docker ps --filter name=ignite-quiz
                     edge=$(docker ps --format '{{.ID}} {{.Ports}}' | awk '/:80->80/ {print $1; exit}')
                     if [ -z "$edge" ]; then

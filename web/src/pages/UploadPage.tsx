@@ -88,13 +88,13 @@ export function UploadPage() {
   return (
     <main className="screen upload">
       <header className="header">
-        <div>
-          <h1>Upload quiz</h1>
-          <p>PDF or Word, then start it from home</p>
-        </div>
         <button className="icon-button" type="button" aria-label="Back to home" onClick={() => navigate('/')}>
           <ArrowLeft size={28} />
         </button>
+        <div className="header-copy">
+          <h1>Upload quiz</h1>
+          <p>PDF or Word, then start it from home</p>
+        </div>
       </header>
 
       <form className="upload-form" onSubmit={scan}>

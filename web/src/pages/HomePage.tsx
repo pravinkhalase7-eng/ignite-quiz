@@ -76,13 +76,15 @@ export function HomePage() {
   return (
     <main className="screen">
       <header className="header">
-        <div>
+        <div className="header-copy">
           <h1>Let’s study</h1>
           <p>Train your knowledge</p>
         </div>
-        <button className="icon-button" type="button" aria-label="Open history" onClick={() => navigate('/history')}>
-          <Trophy size={28} />
-        </button>
+        <div className="header-end">
+          <button className="icon-button" type="button" aria-label="Open history" onClick={() => navigate('/history')}>
+            <Trophy size={28} />
+          </button>
+        </div>
       </header>
 
       {installEvent && (

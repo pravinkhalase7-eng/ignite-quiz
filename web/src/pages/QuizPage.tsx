@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { Question } from '../data/quizzes';
-import { Check } from '@phosphor-icons/react';
+import { ArrowLeft, Check } from '@phosphor-icons/react';
 import { getQuizById, refreshCustomQuizzes } from '../lib/storage';
 import { historyAdd } from '../lib/storage';
 import { playAnswerSound, vibrateError } from '../lib/sound';
@@ -162,7 +162,12 @@ export function QuizPage() {
       <div className={`overlay ${feedback ? `show ${feedback}` : ''}`} />
       <div className="quiz-scroll">
         <div className="quiz-heading">
-          <h2>{quiz.title}</h2>
+          <div className="quiz-title-row">
+            <button className="icon-button" type="button" aria-label="Back to home" onClick={() => setDialog('stop')}>
+              <ArrowLeft size={24} />
+            </button>
+            <h2>{quiz.title}</h2>
+          </div>
           <div className="quiz-meta">
             <span>Question {index + 1}</span>
             <span>
