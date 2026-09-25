@@ -25,7 +25,7 @@ pipeline {
             steps {
                 sh '''
                     docker rm -f ignite-quiz || true
-                    docker run -d --name ignite-quiz -p 4173:4173 --restart unless-stopped ignite-quiz:latest
+                    docker run -d --name ignite-quiz -p 4173:4173 -v ignite-quiz-data:/app/data --restart unless-stopped ignite-quiz:latest
                     docker ps --filter name=ignite-quiz
                     edge=$(docker ps --format '{{.ID}} {{.Ports}}' | awk '/:80->80/ {print $1; exit}')
                     if [ -z "$edge" ]; then

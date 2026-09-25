@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Check } from '@phosphor-icons/react';
-import { getQuizById } from '../lib/storage';
+import { getQuizById, refreshCustomQuizzes } from '../lib/storage';
 import { historyAdd } from '../lib/storage';
 import { playAnswerSound, vibrateError } from '../lib/sound';
 import { Dialog } from '../components/Dialog';
@@ -11,7 +11,8 @@ type DialogState = null | 'skip' | 'stop';
 export function QuizPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const quiz = id ? getQuizById(id) : undefined;
+  const [quiz, setQuiz] = useState(() => (id ? getQuizById(id) : undefined));
+  const [ready, setReady] = useState(() => Boolean(id ? getQuizById(id) : undefined));
   const [index, setIndex] = useState(0);
   const [points, setPoints] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
@@ -20,6 +21,26 @@ export function QuizPage() {
   const [dialog, setDialog] = useState<DialogState>(null);
   const [locked, setLocked] = useState(false);
   const [answers, setAnswers] = useState<(number | null)[]>([]);
+
+  useEffect(() => {
+    let live = true;
+    refreshCustomQuizzes().then(() => {
+      if (!live) return;
+      setQuiz(id ? getQuizById(id) : undefined);
+      setReady(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [id]);
+
+  if (!ready) {
+    return (
+      <main className="screen">
+        <p className="empty">Loading quiz…</p>
+      </main>
+    );
+  }
 
   if (!quiz) {
     return (

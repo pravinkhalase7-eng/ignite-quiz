@@ -1,12 +1,22 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { quizApi } from './quiz-store.mjs';
 
 export default defineConfig({
   preview: {
     allowedHosts: ['quiz.doxstation.com'],
   },
   plugins: [
+    {
+      name: 'shared-quizzes',
+      configureServer(server) {
+        server.middlewares.use(quizApi);
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use(quizApi);
+      },
+    },
     react(),
     VitePWA({
       registerType: 'autoUpdate',
@@ -45,6 +55,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        navigateFallbackDenylist: [/^\/api/],
       },
     }),
   ],

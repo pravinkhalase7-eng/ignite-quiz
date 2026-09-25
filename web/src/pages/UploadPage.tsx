@@ -59,7 +59,7 @@ export function UploadPage() {
     }
   }
 
-  function save() {
+  async function save() {
     if (!questions) return;
     const quiz: Quiz = {
       id: `custom-${Date.now()}`,
@@ -69,7 +69,12 @@ export function UploadPage() {
       icon: 'file',
       questions,
     };
-    customQuizAdd(quiz);
+    try {
+      await customQuizAdd(quiz);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not save this quiz.');
+      return;
+    }
     const blob = new Blob([JSON.stringify(quiz, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');

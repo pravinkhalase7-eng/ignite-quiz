@@ -15,7 +15,7 @@ import {
 import type { Quiz } from '../data/quizzes';
 import { Dialog } from '../components/Dialog';
 import { LevelBars } from '../components/LevelBars';
-import { customQuizRemove, getAllQuizzes } from '../lib/storage';
+import { customQuizRemove, getAllQuizzes, refreshCustomQuizzes } from '../lib/storage';
 
 const ICONS = {
   toggle: ToggleLeft,
@@ -39,6 +39,10 @@ export function HomePage() {
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [quizzes, setQuizzes] = useState(() => getAllQuizzes());
   const [pendingDelete, setPendingDelete] = useState<Quiz | null>(null);
+
+  useEffect(() => {
+    refreshCustomQuizzes().then(() => setQuizzes(getAllQuizzes()));
+  }, []);
 
   useEffect(() => {
     const onPrompt = (event: Event) => {
@@ -104,6 +108,7 @@ export function HomePage() {
       </div>
 
       <section className="card-grid">
+        {visibleQuizzes.length === 0 && <p className="empty">No quizzes yet. Upload one to start.</p>}
         {visibleQuizzes.map((quiz, index) => (
           <QuizCard
             key={quiz.id}
@@ -123,9 +128,9 @@ export function HomePage() {
           cancelLabel="Cancel"
           onCancel={() => setPendingDelete(null)}
           onConfirm={() => {
-            customQuizRemove(pendingDelete.id);
-            setQuizzes(getAllQuizzes());
+            const id = pendingDelete.id;
             setPendingDelete(null);
+            customQuizRemove(id).then(() => setQuizzes(getAllQuizzes()));
           }}
         />
       )}
