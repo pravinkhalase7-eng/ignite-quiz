@@ -39,6 +39,9 @@ export function HomePage() {
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [quizzes, setQuizzes] = useState(() => getAllQuizzes());
   const [pendingDelete, setPendingDelete] = useState<Quiz | null>(null);
+  const [pendingStart, setPendingStart] = useState<Quiz | null>(null);
+  const [questionCount, setQuestionCount] = useState('');
+  const [randomOrder, setRandomOrder] = useState(false);
 
   useEffect(() => {
     refreshCustomQuizzes().then(() => setQuizzes(getAllQuizzes()));
@@ -114,11 +117,34 @@ export function HomePage() {
             key={quiz.id}
             quiz={quiz}
             index={index}
-            onOpen={() => navigate(`/quiz/${quiz.id}`)}
+            onOpen={() => {
+              setPendingStart(quiz);
+              setQuestionCount(String(quiz.questions.length));
+              setRandomOrder(false);
+            }}
             onDelete={quiz.id.startsWith('custom-') ? () => setPendingDelete(quiz) : undefined}
           />
         ))}
       </section>
+
+      {pendingStart && (
+        <StartQuiz
+          quiz={pendingStart}
+          questionCount={questionCount}
+          randomOrder={randomOrder}
+          onCount={setQuestionCount}
+          onRandom={setRandomOrder}
+          onCancel={() => setPendingStart(null)}
+          onStart={() => {
+            const total = pendingStart.questions.length;
+            const count = Math.min(total, Math.max(1, Math.floor(Number(questionCount)) || total));
+            const params = new URLSearchParams({ count: String(count) });
+            if (randomOrder) params.set('random', '1');
+            setPendingStart(null);
+            navigate(`/quiz/${pendingStart.id}?${params}`);
+          }}
+        />
+      )}
 
       {pendingDelete && (
         <Dialog
@@ -168,6 +194,72 @@ function QuizCard({
         </button>
       )}
     </article>
+  );
+}
+
+function StartQuiz({
+  quiz,
+  questionCount,
+  randomOrder,
+  onCount,
+  onRandom,
+  onCancel,
+  onStart,
+}: {
+  quiz: Quiz;
+  questionCount: string;
+  randomOrder: boolean;
+  onCount: (value: string) => void;
+  onRandom: (value: boolean) => void;
+  onCancel: () => void;
+  onStart: () => void;
+}) {
+  const total = quiz.questions.length;
+  const presets = [10, 20, 50, 100].filter((count) => count < total);
+
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="start-title">
+        <h2 id="start-title">{quiz.category || quiz.title}</h2>
+        <p>{total} questions available</p>
+        <div className="start-form">
+          <label>
+            How many questions?
+            <input
+              type="number"
+              min={1}
+              max={total}
+              value={questionCount}
+              onChange={(event) => onCount(event.target.value)}
+            />
+          </label>
+          {presets.length > 0 && (
+            <div className="start-counts">
+              {presets.map((count) => (
+                <button key={count} type="button" className={questionCount === String(count) ? 'on' : ''} onClick={() => onCount(String(count))}>
+                  {count}
+                </button>
+              ))}
+              <button type="button" className={questionCount === String(total) ? 'on' : ''} onClick={() => onCount(String(total))}>
+                All
+              </button>
+            </div>
+          )}
+          <label className="random-row">
+            <input type="checkbox" checked={randomOrder} onChange={(event) => onRandom(event.target.checked)} />
+            Random questions
+          </label>
+        </div>
+        <div className="footer">
+          <button className="btn-outline" type="button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn" type="button" onClick={onStart}>
+            Start
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

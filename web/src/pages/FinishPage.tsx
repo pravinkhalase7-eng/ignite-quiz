@@ -1,5 +1,6 @@
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Trophy } from '@phosphor-icons/react';
+import type { Question } from '../data/quizzes';
 import { getQuizById } from '../lib/storage';
 
 type FinishState = {
@@ -7,6 +8,7 @@ type FinishState = {
   title?: string;
   points?: number;
   answers?: (number | null)[];
+  questions?: Question[];
 };
 
 export function FinishPage() {
@@ -15,8 +17,9 @@ export function FinishPage() {
   const quiz = state?.quizId ? getQuizById(state.quizId) : undefined;
   const points = state?.points;
   const answers = state?.answers;
+  const questions = state?.questions ?? quiz?.questions;
 
-  if (!quiz || points === undefined || !answers) {
+  if (!quiz || !questions || points === undefined || !answers) {
     return <Navigate to="/" replace />;
   }
 
@@ -26,12 +29,12 @@ export function FinishPage() {
         <Trophy size={40} color="#00B37E" weight="duotone" />
         <h1>Quiz complete</h1>
         <p>
-          {quiz.title} · {points} of {quiz.questions.length} correct
+          {quiz.title} · {points} of {questions.length} correct
         </p>
       </header>
 
       <section className="review-list" aria-label="Question review">
-        {quiz.questions.map((question, index) => {
+        {questions.map((question, index) => {
           const chosen = answers[index];
           const correctText = question.alternatives[question.correct];
           const wasCorrect = chosen === question.correct;

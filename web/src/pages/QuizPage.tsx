@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import type { Question } from '../data/quizzes';
 import { Check } from '@phosphor-icons/react';
 import { getQuizById, refreshCustomQuizzes } from '../lib/storage';
 import { historyAdd } from '../lib/storage';
@@ -8,11 +9,27 @@ import { Dialog } from '../components/Dialog';
 
 type DialogState = null | 'skip' | 'stop';
 
+function pickQuestions(questions: Question[], count: number, random: boolean) {
+  const total = Math.min(questions.length, Math.max(1, Math.floor(count)));
+  const source = random ? shuffle(questions) : questions;
+  return source.slice(0, total);
+}
+
+function shuffle<T>(items: T[]) {
+  const next = [...items];
+  for (let index = next.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(Math.random() * (index + 1));
+    [next[index], next[swap]] = [next[swap], next[index]];
+  }
+  return next;
+}
+
 export function QuizPage() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [quiz, setQuiz] = useState(() => (id ? getQuizById(id) : undefined));
-  const [ready, setReady] = useState(() => Boolean(id ? getQuizById(id) : undefined));
+  const [ready, setReady] = useState(false);
   const [index, setIndex] = useState(0);
   const [points, setPoints] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
@@ -26,7 +43,18 @@ export function QuizPage() {
     let live = true;
     refreshCustomQuizzes().then(() => {
       if (!live) return;
-      setQuiz(id ? getQuizById(id) : undefined);
+      const loaded = id ? getQuizById(id) : undefined;
+      if (!loaded) {
+        setQuiz(undefined);
+        setReady(true);
+        return;
+      }
+      const requested = Number(searchParams.get('count'));
+      const count = Number.isFinite(requested) && requested > 0 ? requested : loaded.questions.length;
+      setQuiz({
+        ...loaded,
+        questions: pickQuestions(loaded.questions, count, searchParams.get('random') === '1'),
+      });
       setReady(true);
     });
     return () => {
@@ -72,6 +100,7 @@ export function QuizPage() {
         title: quiz!.title,
         points: nextPoints,
         answers: review,
+        questions: quiz!.questions,
       },
     });
   }

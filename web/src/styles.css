@@ -583,6 +583,59 @@ button, a { font-family: inherit; }
   padding: 24px;
 }
 
+.start-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.start-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.start-form input[type='number'] {
+  height: 48px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--grey-800);
+  color: var(--grey-100);
+  padding: 0 14px;
+  font: inherit;
+  font-size: 15px;
+}
+
+.start-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.start-counts button {
+  border: 1px solid var(--grey-500);
+  background: transparent;
+  color: var(--grey-100);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.start-counts button.on {
+  background: var(--brand-mid);
+  border-color: var(--brand-mid);
+}
+
+.random-row {
+  flex-direction: row !important;
+  align-items: center;
+  color: var(--grey-100) !important;
+  font-size: 15px !important;
+}
+
 .dialog h2 { margin: 0 0 8px; font-size: 18px; }
 .dialog p { margin: 0 0 20px; color: var(--muted); }
 .dialog .footer { margin-top: 0; }
