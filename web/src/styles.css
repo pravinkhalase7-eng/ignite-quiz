@@ -660,6 +660,14 @@ button, a { font-family: inherit; }
   font-size: 15px;
 }
 
+.start-ranges {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .start-counts {
   display: flex;
   flex-wrap: wrap;

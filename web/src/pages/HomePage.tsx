@@ -41,6 +41,7 @@ export function HomePage() {
   const [pendingDelete, setPendingDelete] = useState<Quiz | null>(null);
   const [pendingStart, setPendingStart] = useState<Quiz | null>(null);
   const [questionCount, setQuestionCount] = useState('');
+  const [rangeStart, setRangeStart] = useState(0);
   const [randomOrder, setRandomOrder] = useState(false);
 
   useEffect(() => {
@@ -122,6 +123,7 @@ export function HomePage() {
             onOpen={() => {
               setPendingStart(quiz);
               setQuestionCount(String(quiz.questions.length));
+              setRangeStart(0);
               setRandomOrder(false);
             }}
             onDelete={quiz.id.startsWith('custom-') ? () => setPendingDelete(quiz) : undefined}
@@ -133,14 +135,20 @@ export function HomePage() {
         <StartQuiz
           quiz={pendingStart}
           questionCount={questionCount}
+          rangeStart={rangeStart}
           randomOrder={randomOrder}
-          onCount={setQuestionCount}
+          onCount={(value) => {
+            setQuestionCount(value);
+            setRangeStart(0);
+          }}
+          onRange={setRangeStart}
           onRandom={setRandomOrder}
           onCancel={() => setPendingStart(null)}
           onStart={() => {
             const total = pendingStart.questions.length;
             const count = Math.min(total, Math.max(1, Math.floor(Number(questionCount)) || total));
-            const params = new URLSearchParams({ count: String(count) });
+            const start = Math.min(Math.max(0, rangeStart), Math.max(0, total - 1));
+            const params = new URLSearchParams({ count: String(count), start: String(start) });
             if (randomOrder) params.set('random', '1');
             setPendingStart(null);
             navigate(`/quiz/${pendingStart.id}?${params}`);
@@ -199,25 +207,40 @@ function QuizCard({
   );
 }
 
+function questionRanges(total: number, count: number) {
+  const size = Math.min(total, Math.max(1, count));
+  const slots: { start: number; end: number }[] = [];
+  for (let start = 0; start < total; start += size) {
+    slots.push({ start, end: Math.min(start + size, total) });
+  }
+  return slots;
+}
+
 function StartQuiz({
   quiz,
   questionCount,
+  rangeStart,
   randomOrder,
   onCount,
+  onRange,
   onRandom,
   onCancel,
   onStart,
 }: {
   quiz: Quiz;
   questionCount: string;
+  rangeStart: number;
   randomOrder: boolean;
   onCount: (value: string) => void;
+  onRange: (value: number) => void;
   onRandom: (value: boolean) => void;
   onCancel: () => void;
   onStart: () => void;
 }) {
   const total = quiz.questions.length;
   const presets = [10, 20, 50, 100].filter((count) => count < total);
+  const count = Math.min(total, Math.max(1, Math.floor(Number(questionCount)) || total));
+  const ranges = questionRanges(total, count);
 
   return (
     <div className="dialog-backdrop" role="presentation">
@@ -245,6 +268,23 @@ function StartQuiz({
               <button type="button" className={questionCount === String(total) ? 'on' : ''} onClick={() => onCount(String(total))}>
                 All
               </button>
+            </div>
+          )}
+          {ranges.length > 1 && (
+            <div className="start-ranges">
+              <span>Which range?</span>
+              <div className="start-counts">
+                {ranges.map((range) => (
+                  <button
+                    key={range.start}
+                    type="button"
+                    className={rangeStart === range.start ? 'on' : ''}
+                    onClick={() => onRange(range.start)}
+                  >
+                    {range.start}-{range.end}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           <label className="random-row">

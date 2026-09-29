@@ -9,10 +9,11 @@ import { Dialog } from '../components/Dialog';
 
 type DialogState = null | 'skip' | 'stop';
 
-function pickQuestions(questions: Question[], count: number, random: boolean) {
-  const total = Math.min(questions.length, Math.max(1, Math.floor(count)));
-  const source = random ? shuffle(questions) : questions;
-  return source.slice(0, total);
+function pickQuestions(questions: Question[], count: number, random: boolean, start: number) {
+  const size = Math.min(questions.length, Math.max(1, Math.floor(count)));
+  const from = Math.min(Math.max(0, Math.floor(start)), Math.max(0, questions.length - 1));
+  const slice = questions.slice(from, from + size);
+  return random ? shuffle(slice) : slice;
 }
 
 function shuffle<T>(items: T[]) {
@@ -51,9 +52,10 @@ export function QuizPage() {
       }
       const requested = Number(searchParams.get('count'));
       const count = Number.isFinite(requested) && requested > 0 ? requested : loaded.questions.length;
+      const start = Number(searchParams.get('start'));
       setQuiz({
         ...loaded,
-        questions: pickQuestions(loaded.questions, count, searchParams.get('random') === '1'),
+        questions: pickQuestions(loaded.questions, count, searchParams.get('random') === '1', Number.isFinite(start) ? start : 0),
       });
       setReady(true);
     });
@@ -104,6 +106,7 @@ export function QuizPage() {
         count: Number.isFinite(Number(searchParams.get('count'))) && Number(searchParams.get('count')) > 0
           ? Number(searchParams.get('count'))
           : quiz!.questions.length,
+        start: Number.isFinite(Number(searchParams.get('start'))) ? Number(searchParams.get('start')) : 0,
         random: searchParams.get('random') === '1',
       },
     });

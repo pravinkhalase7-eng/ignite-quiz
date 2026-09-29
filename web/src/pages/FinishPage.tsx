@@ -12,6 +12,7 @@ type FinishState = {
   answers?: (number | null)[];
   questions?: Question[];
   count?: number;
+  start?: number;
   random?: boolean;
 };
 
@@ -32,7 +33,7 @@ export function FinishPage() {
 
   function tryAgain() {
     const count = state?.count ?? questions!.length;
-    const params = new URLSearchParams({ count: String(count) });
+    const params = new URLSearchParams({ count: String(count), start: String(state?.start ?? 0) });
     if (state?.random) params.set('random', '1');
     navigate(`/quiz/${quiz!.id}?${params}`);
   }
