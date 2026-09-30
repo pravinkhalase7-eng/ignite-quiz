@@ -5,6 +5,8 @@ import { QuizPage } from './pages/QuizPage';
 import { FinishPage } from './pages/FinishPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { UploadPage } from './pages/UploadPage';
+import { StoryPage } from './pages/StoryPage';
+import { StoryPracticePage } from './pages/StoryPracticePage';
 import { LoginPage } from './pages/LoginPage';
 
 type Session = { google: boolean; user: { id: string; email: string; name: string } | null };
@@ -42,6 +44,8 @@ export function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/upload" element={<UploadPage />} />
+              <Route path="/story" element={<StoryPage />} />
+              <Route path="/story/practice" element={<StoryPracticePage />} />
               <Route path="/quiz/:id" element={<QuizPage />} />
               <Route path="/finish" element={<FinishPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />

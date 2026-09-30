@@ -11,6 +11,7 @@ import {
   Plus,
   Trash,
   Trophy,
+  BookOpen,
 } from '@phosphor-icons/react';
 import type { Quiz } from '../data/quizzes';
 import { Dialog } from '../components/Dialog';
@@ -110,6 +111,9 @@ export function HomePage() {
       <div className="upload-row">
         <button className="btn" type="button" onClick={() => navigate('/upload')}>
           <Plus size={20} weight="bold" /> Upload quiz
+        </button>
+        <button className="btn-outline" type="button" onClick={() => navigate('/story')}>
+          <BookOpen size={20} weight="bold" /> Story quiz
         </button>
       </div>
 
