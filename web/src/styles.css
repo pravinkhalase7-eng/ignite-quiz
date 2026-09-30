@@ -240,6 +240,52 @@ button, a { font-family: inherit; }
   padding: 0;
 }
 
+.page-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.page-shot {
+  margin: 0;
+  width: 76px;
+  flex: none;
+  position: relative;
+}
+
+.page-shot img {
+  width: 76px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--grey-700);
+  display: block;
+}
+
+.page-shot button {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.page-shot figcaption {
+  margin-top: 4px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .option.story-right { outline: 2px solid var(--brand-light); }
 .option.story-wrong { outline: 2px solid var(--danger); }
 
@@ -503,6 +549,13 @@ button, a { font-family: inherit; }
   border: 0;
   background: var(--brand-mid);
   color: white;
+}
+
+.btn:disabled,
+.btn-outline:disabled,
+.btn-danger:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .btn-outline {

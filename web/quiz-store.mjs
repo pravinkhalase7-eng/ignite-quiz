@@ -86,7 +86,7 @@ export function quizApi(req, res, next) {
   }
 
   if (url === '/api/llm/gemini' && req.method === 'POST') {
-    readBody(req, (raw) => {
+    readBody(req, res, (raw) => {
       geminiFromServer(raw)
         .then((result) => sendJson(res, result.status, result.body))
         .catch(() => sendJson(res, 502, { error: 'Gemini could not be reached.' }));
@@ -100,7 +100,7 @@ export function quizApi(req, res, next) {
   }
 
   if (url === '/api/quizzes' && req.method === 'POST') {
-    readBody(req, (raw) => {
+    readBody(req, res, (raw) => {
       let quiz;
       try {
         quiz = JSON.parse(raw);
@@ -188,7 +188,7 @@ async function handleAccount(req, res, url) {
   }
 
   if (url === '/api/quizzes' && req.method === 'POST') {
-    readBody(req, async (raw) => {
+    readBody(req, res, async (raw) => {
       let quiz;
       try {
         quiz = JSON.parse(raw);
@@ -219,7 +219,7 @@ async function handleAccount(req, res, url) {
   }
 
   if (url === '/api/history' && req.method === 'POST') {
-    readBody(req, async (raw) => {
+    readBody(req, res, async (raw) => {
       let entry;
       try {
         entry = JSON.parse(raw);
@@ -250,7 +250,7 @@ async function handleAccount(req, res, url) {
   }
 
   if (url === '/api/stories' && req.method === 'POST') {
-    readBody(req, async (raw) => {
+    readBody(req, res, async (raw) => {
       const story = parseStory(raw);
       if (!story) {
         sendJson(res, 400, { error: 'Invalid story.' });
@@ -289,7 +289,7 @@ function handleStories(req, res, url) {
   }
 
   if (url === '/api/stories' && req.method === 'POST') {
-    readBody(req, (raw) => {
+    readBody(req, res, (raw) => {
       const story = parseStory(raw);
       if (!story) {
         sendJson(res, 400, { error: 'Invalid story.' });
@@ -417,12 +417,14 @@ async function geminiFromServer(raw) {
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
   if (!prompt || prompt.length > 100_000) return { status: 400, body: { error: 'Type a story, or add a photo.' } };
 
-  const image = body.image;
+  const images = Array.isArray(body.images) ? body.images : body.image ? [body.image] : [];
+  if (images.length > 16) return { status: 400, body: { error: 'Add up to 16 pages.' } };
   const parts = [];
-  if (image && typeof image.data === 'string') {
+  for (const image of images) {
+    if (!image || typeof image.data !== 'string') continue;
     const mime = typeof image.mime === 'string' ? image.mime : 'image/jpeg';
-    if (!mime.startsWith('image/') || image.data.length > 6_000_000) {
-      return { status: 400, body: { error: 'That photo is too large.' } };
+    if (!mime.startsWith('image/') || image.data.length > 2_000_000) {
+      return { status: 400, body: { error: 'One page is too large. Take that photo again.' } };
     }
     parts.push({ inline_data: { mime_type: mime, data: image.data } });
   }
@@ -457,16 +459,25 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-function readBody(req, done) {
+function readBody(req, res, done) {
   const chunks = [];
   let size = 0;
+  let rejected = false;
   req.on('data', (chunk) => {
+    if (rejected) return;
     size += chunk.length;
-    if (size > 8_000_000) {
+    if (size > 20_000_000) {
+      rejected = true;
+      sendJson(res, 413, { error: 'Those pages are too large. Remove a few and try again.' });
       req.destroy();
       return;
     }
     chunks.push(chunk);
   });
-  req.on('end', () => done(Buffer.concat(chunks).toString('utf8')));
+  req.on('end', () => {
+    if (!rejected) done(Buffer.concat(chunks).toString('utf8'));
+  });
+  req.on('error', () => {
+    if (!rejected) sendJson(res, 400, { error: 'Could not read the upload.' });
+  });
 }

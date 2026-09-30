@@ -60,31 +60,34 @@ export function serverHasGemini() {
     .catch(() => false);
 }
 
-export async function generateStoryPack(input: { text: string; image?: File | null }): Promise<StoryPack> {
+export async function generateStoryPack(input: { text: string; images?: File[] }): Promise<StoryPack> {
   const { key, provider } = llmSettings();
   const onServer = await serverHasGemini();
   if (!onServer && !key.trim()) {
     throw new Error('Add a Gemini or OpenAI key on this page. It is saved only in this browser.');
   }
   const story = input.text.trim();
-  if (!story && !input.image) throw new Error('Type a story, or add a photo.');
-  const image = input.image ? await fileToImage(input.image) : null;
-  const prompt = storyPrompt(story);
+  const files = input.images ?? [];
+  if (!story && files.length === 0) throw new Error('Type a story, or add a page.');
+  if (files.length > 16) throw new Error('Add up to 16 pages.');
+  const images = [];
+  for (const file of files) images.push(await fileToImage(file));
+  const prompt = storyPrompt(story, images.length);
   const raw = onServer
-    ? await geminiOnServer(prompt, image)
+    ? await geminiOnServer(prompt, images)
     : provider === 'gemini'
-      ? await gemini(key, prompt, image)
-      : await openai(key, prompt, image);
+      ? await gemini(key, prompt, images)
+      : await openai(key, prompt, images);
   return normalizePack(raw, story);
 }
 
 export { llmSettings, saveLlmSettings, type LlmProvider };
 
-function storyPrompt(story: string) {
+function storyPrompt(story: string, pageCount: number) {
   return [
     'You help children understand a story.',
-    'Read the story. If a photo is attached, read the story from the photo first.',
-    'Write simple questions a child can answer after reading.',
+    'The photos, if any, are consecutive pages of one story. Read them in order, from the first page to the last, before you write anything.',
+    'Write simple questions a child can answer after reading the whole story.',
     'Make two sets:',
     '1. storyQuestions: what happened, who, where, why, and the order of events. Every fact must come from the story.',
     '2. wordQuestions: harder words from the story. Ask what the word means in simple words a child knows.',
@@ -95,25 +98,32 @@ function storyPrompt(story: string) {
     'Return only JSON:',
     '{"title":"short title","story":"the full story text","storyQuestions":[{"title":"...","alternatives":["a","b","c","d"],"correct":0}],"wordQuestions":[{"title":"...","alternatives":["a","b","c","d"],"correct":0}]}',
     '',
-    story ? `TYPED STORY:\n${story}` : 'TYPED STORY: (none, read the photo)',
+    pageCount ? `PHOTO PAGES: ${pageCount}, already in reading order.` : 'PHOTO PAGES: none',
+    story ? `TYPED STORY:\n${story}` : 'TYPED STORY: (none, read the photos)',
   ].join('\n');
 }
 
-async function geminiOnServer(prompt: string, image: { mime: string; data: string } | null) {
-  const response = await fetch('/api/llm/gemini', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, image }),
-  });
+async function geminiOnServer(prompt: string, images: { mime: string; data: string }[]) {
+  let response: Response;
+  try {
+    response = await fetch('/api/llm/gemini', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, images }),
+    });
+  } catch {
+    throw new Error('Could not send the pages. Try again with fewer pages.');
+  }
   const data = (await response.json().catch(() => ({}))) as { text?: string; error?: string };
   if (!response.ok) throw new Error(data.error || 'Gemini could not make the quiz.');
   return data.text ?? '';
 }
 
-async function gemini(apiKey: string, prompt: string, image: { mime: string; data: string } | null) {
-  const parts: Record<string, unknown>[] = [];
-  if (image) parts.push({ inline_data: { mime_type: image.mime, data: image.data } });
+async function gemini(apiKey: string, prompt: string, images: { mime: string; data: string }[]) {
+  const parts: Record<string, unknown>[] = images.map((image) => ({
+    inline_data: { mime_type: image.mime, data: image.data },
+  }));
   parts.push({ text: prompt });
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
@@ -138,9 +148,9 @@ async function gemini(apiKey: string, prompt: string, image: { mime: string; dat
   );
 }
 
-async function openai(apiKey: string, prompt: string, image: { mime: string; data: string } | null) {
+async function openai(apiKey: string, prompt: string, images: { mime: string; data: string }[]) {
   const content: Record<string, unknown>[] = [{ type: 'text', text: prompt }];
-  if (image) {
+  for (const image of images) {
     content.push({ type: 'image_url', image_url: { url: `data:${image.mime};base64,${image.data}` } });
   }
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -199,18 +209,33 @@ function cleanQuestions(items: RawQuestion[] | undefined): Question[] {
 
 function fileToImage(file: File) {
   return new Promise<{ mime: string; data: string }>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || '');
-      const data = result.split(',')[1];
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      const maxEdge = 1280;
+      const scale = Math.min(1, maxEdge / Math.max(image.width, image.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      const context = canvas.getContext('2d');
+      URL.revokeObjectURL(url);
+      if (!context) {
+        reject(new Error('Could not read that photo.'));
+        return;
+      }
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const data = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
       if (!data) {
         reject(new Error('Could not read that photo.'));
         return;
       }
-      resolve({ mime: file.type || 'image/jpeg', data });
+      resolve({ mime: 'image/jpeg', data });
     };
-    reader.onerror = () => reject(new Error('Could not read that photo.'));
-    reader.readAsDataURL(file);
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not read that photo. Use a JPG or PNG page.'));
+    };
+    image.src = url;
   });
 }
 
