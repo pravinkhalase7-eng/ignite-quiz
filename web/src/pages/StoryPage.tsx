@@ -1,7 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Camera, Image as ImageIcon } from '@phosphor-icons/react';
-import { generateStoryPack, llmSettings, saveLlmSettings, saveStoryPack, serverHasGemini, type LlmProvider } from '../lib/storyQuiz';
+import { ArrowLeft, Camera, Image as ImageIcon, Trash } from '@phosphor-icons/react';
+import { Dialog } from '../components/Dialog';
+import {
+  deleteStory,
+  generateStoryPack,
+  listStories,
+  llmSettings,
+  saveLlmSettings,
+  saveStoryPack,
+  serverHasGemini,
+  type LlmProvider,
+  type StoryPack,
+} from '../lib/storyQuiz';
 
 export function StoryPage() {
   const navigate = useNavigate();
@@ -11,11 +22,14 @@ export function StoryPage() {
   const [apiKey, setApiKey] = useState(saved.key);
   const [provider, setProvider] = useState<LlmProvider>(saved.provider);
   const [needsKey, setNeedsKey] = useState(false);
+  const [stories, setStories] = useState<StoryPack[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<StoryPack | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     serverHasGemini().then((ready) => setNeedsKey(!ready));
+    listStories().then(setStories);
   }, []);
 
   async function createQuiz(event: React.FormEvent) {
@@ -25,8 +39,8 @@ export function StoryPage() {
     try {
       saveLlmSettings(apiKey, provider);
       const pack = await generateStoryPack({ text, image: photo });
-      saveStoryPack(pack);
-      navigate('/story/practice');
+      await saveStoryPack(pack);
+      navigate(`/story/practice?id=${encodeURIComponent(pack.id)}`);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Could not make the quiz.');
     } finally {
@@ -105,6 +119,47 @@ export function StoryPage() {
           {busy ? 'Making questions…' : 'Make story quiz'}
         </button>
       </form>
+
+      {stories.length > 0 && (
+        <section className="history-list" aria-label="Saved stories">
+          <h2 className="saved-heading">Saved stories</h2>
+          {stories.map((story) => (
+            <article key={story.id} className="history-card">
+              <button
+                className="story-saved"
+                type="button"
+                onClick={() => navigate(`/story/practice?id=${encodeURIComponent(story.id)}`)}
+              >
+                <h2>{story.title}</h2>
+                <p>{story.storyQuestions.length + story.wordQuestions.length} questions</p>
+              </button>
+              <button
+                className="trash"
+                type="button"
+                aria-label={`Delete ${story.title}`}
+                onClick={() => setPendingDelete(story)}
+              >
+                <Trash size={22} />
+              </button>
+            </article>
+          ))}
+        </section>
+      )}
+
+      {pendingDelete && (
+        <Dialog
+          title="Delete story"
+          message={`Delete “${pendingDelete.title}”? This cannot be undone.`}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            const id = pendingDelete.id;
+            setPendingDelete(null);
+            deleteStory(id).then(() => listStories().then(setStories));
+          }}
+        />
+      )}
     </main>
   );
 }

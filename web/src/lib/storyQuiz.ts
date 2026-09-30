@@ -2,6 +2,7 @@ import type { Question } from '../data/quizzes';
 import { llmSettings, saveLlmSettings, type LlmProvider } from './parseWithLlm';
 
 export type StoryPack = {
+  id: string;
   title: string;
   story: string;
   storyQuestions: Question[];
@@ -19,8 +20,37 @@ export function loadStoryPack(): StoryPack | null {
   }
 }
 
-export function saveStoryPack(pack: StoryPack) {
+export function rememberStoryPack(pack: StoryPack) {
   sessionStorage.setItem(PACK_KEY, JSON.stringify(pack));
+}
+
+export async function saveStoryPack(pack: StoryPack) {
+  rememberStoryPack(pack);
+  const response = await fetch('/api/stories', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(pack),
+  });
+  if (!response.ok) throw new Error('Could not save the story.');
+  return pack;
+}
+
+export async function listStories(): Promise<StoryPack[]> {
+  const response = await fetch('/api/stories', { credentials: 'include' });
+  if (!response.ok) return [];
+  const list = (await response.json()) as StoryPack[];
+  return Array.isArray(list) ? list : [];
+}
+
+export async function loadStory(id: string): Promise<StoryPack | null> {
+  const response = await fetch(`/api/stories/${encodeURIComponent(id)}`, { credentials: 'include' });
+  if (!response.ok) return null;
+  return (await response.json()) as StoryPack;
+}
+
+export async function deleteStory(id: string) {
+  await fetch(`/api/stories/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
 }
 
 export function serverHasGemini() {
@@ -147,6 +177,7 @@ function normalizePack(raw: string, fallbackStory: string): StoryPack {
     throw new Error('No questions were created. Try a longer story.');
   }
   return {
+    id: `story-${Date.now()}`,
     title: (parsed.title || 'Story quiz').replace(/\s+/g, ' ').trim(),
     story: (parsed.story || fallbackStory).trim(),
     storyQuestions,

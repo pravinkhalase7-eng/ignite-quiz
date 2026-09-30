@@ -43,6 +43,15 @@ export async function ensureSchema() {
         level integer NOT NULL,
         created_at timestamptz NOT NULL DEFAULT now()
       );
+      CREATE TABLE IF NOT EXISTS quiz_stories (
+        id text PRIMARY KEY,
+        user_id text NOT NULL REFERENCES quiz_users(id) ON DELETE CASCADE,
+        title text NOT NULL,
+        story text NOT NULL,
+        story_questions jsonb NOT NULL,
+        word_questions jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
     `);
   }
   await schemaReady;
@@ -108,6 +117,58 @@ export async function saveHistory(userId, entry) {
 export async function deleteHistory(userId, id) {
   await ensureSchema();
   await pool.query('DELETE FROM quiz_history WHERE user_id = $1 AND id = $2', [userId, id]);
+}
+
+export async function listStories(userId) {
+  await ensureSchema();
+  const result = await pool.query(
+    'SELECT id, title, story, story_questions, word_questions FROM quiz_stories WHERE user_id = $1 ORDER BY created_at DESC',
+    [userId],
+  );
+  return result.rows.map(rowToStory);
+}
+
+export async function saveStory(userId, story) {
+  await ensureSchema();
+  await pool.query(
+    `INSERT INTO quiz_stories (id, user_id, title, story, story_questions, word_questions)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+     ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, story = EXCLUDED.story, story_questions = EXCLUDED.story_questions, word_questions = EXCLUDED.word_questions
+     WHERE quiz_stories.user_id = $2`,
+    [
+      story.id,
+      userId,
+      story.title,
+      story.story,
+      JSON.stringify(story.storyQuestions),
+      JSON.stringify(story.wordQuestions),
+    ],
+  );
+  return story;
+}
+
+export async function getStory(userId, id) {
+  await ensureSchema();
+  const result = await pool.query(
+    'SELECT id, title, story, story_questions, word_questions FROM quiz_stories WHERE user_id = $1 AND id = $2',
+    [userId, id],
+  );
+  return result.rows[0] ? rowToStory(result.rows[0]) : null;
+}
+
+export async function deleteStory(userId, id) {
+  await ensureSchema();
+  await pool.query('DELETE FROM quiz_stories WHERE user_id = $1 AND id = $2', [userId, id]);
+}
+
+function rowToStory(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    story: row.story,
+    storyQuestions: row.story_questions,
+    wordQuestions: row.word_questions,
+  };
 }
 
 export function googleStartUrl(req) {

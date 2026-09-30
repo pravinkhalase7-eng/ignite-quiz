@@ -223,6 +223,23 @@ button, a { font-family: inherit; }
 .story-recap h2 { margin: 0 0 8px; font-size: 16px; }
 .story-recap p { margin: 0; color: var(--muted); line-height: 1.5; white-space: pre-wrap; }
 
+.saved-heading {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.story-saved {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
 .option.story-right { outline: 2px solid var(--brand-light); }
 .option.story-wrong { outline: 2px solid var(--danger); }
 

@@ -7,16 +7,21 @@ import {
   currentUser,
   deleteHistory,
   deleteQuiz,
+  deleteStory,
   finishGoogleLogin,
+  getStory,
   googleStartUrl,
   listHistory,
   listQuizzes,
+  listStories,
   saveHistory,
   saveQuiz,
+  saveStory,
   sessionCookie,
 } from './account.mjs';
 
 const DATA = process.env.QUIZ_DATA || path.join(process.cwd(), 'data', 'quizzes.json');
+const STORIES = process.env.STORY_DATA || path.join(process.cwd(), 'data', 'stories.json');
 const ICONS = new Set(['toggle', 'code', 'git', 'paint', 'cloud', 'device', 'file']);
 
 loadServerEnv();
@@ -61,6 +66,17 @@ export function quizApi(req, res, next) {
     handleAccount(req, res, url).catch((error) => {
       sendJson(res, 500, { error: error instanceof Error ? error.message : 'Server error.' });
     });
+    return;
+  }
+
+  if (url.startsWith('/api/stories')) {
+    if (authEnabled()) {
+      handleAccount(req, res, url).catch((error) => {
+        sendJson(res, 500, { error: error instanceof Error ? error.message : 'Server error.' });
+      });
+      return;
+    }
+    handleStories(req, res, url);
     return;
   }
 
@@ -228,7 +244,139 @@ async function handleAccount(req, res, url) {
     return;
   }
 
+  if (url === '/api/stories' && req.method === 'GET') {
+    sendJson(res, 200, await listStories(user.id));
+    return;
+  }
+
+  if (url === '/api/stories' && req.method === 'POST') {
+    readBody(req, async (raw) => {
+      const story = parseStory(raw);
+      if (!story) {
+        sendJson(res, 400, { error: 'Invalid story.' });
+        return;
+      }
+      sendJson(res, 200, await saveStory(user.id, story));
+    });
+    return;
+  }
+
+  const storyMatch = url.match(/^\/api\/stories\/([^/]+)$/);
+  if (storyMatch && req.method === 'GET') {
+    const story = await getStory(user.id, decodeURIComponent(storyMatch[1]));
+    if (!story) {
+      sendJson(res, 404, { error: 'Story not found.' });
+      return;
+    }
+    sendJson(res, 200, story);
+    return;
+  }
+
+  if (storyMatch && req.method === 'DELETE') {
+    await deleteStory(user.id, decodeURIComponent(storyMatch[1]));
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+
   sendJson(res, 404, { error: 'Not found.' });
+}
+
+function handleStories(req, res, url) {
+  if (url === '/api/stories' && req.method === 'GET') {
+    sendJson(res, 200, readStories());
+    return;
+  }
+
+  if (url === '/api/stories' && req.method === 'POST') {
+    readBody(req, (raw) => {
+      const story = parseStory(raw);
+      if (!story) {
+        sendJson(res, 400, { error: 'Invalid story.' });
+        return;
+      }
+      const nextList = [story, ...readStories().filter((item) => item.id !== story.id)].slice(0, 40);
+      writeStories(nextList);
+      sendJson(res, 200, story);
+    });
+    return;
+  }
+
+  const match = url.match(/^\/api\/stories\/([^/]+)$/);
+  if (!match) {
+    sendJson(res, 404, { error: 'Not found.' });
+    return;
+  }
+  const id = decodeURIComponent(match[1]);
+  if (req.method === 'GET') {
+    const story = readStories().find((item) => item.id === id);
+    if (!story) {
+      sendJson(res, 404, { error: 'Story not found.' });
+      return;
+    }
+    sendJson(res, 200, story);
+    return;
+  }
+  if (req.method === 'DELETE') {
+    writeStories(readStories().filter((item) => item.id !== id));
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+  sendJson(res, 404, { error: 'Not found.' });
+}
+
+function readStories() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(STORIES, 'utf8'));
+    return Array.isArray(parsed) ? parsed.filter(isStory) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStories(list) {
+  fs.mkdirSync(path.dirname(STORIES), { recursive: true });
+  fs.writeFileSync(STORIES, JSON.stringify(list));
+}
+
+function parseStory(raw) {
+  try {
+    const story = JSON.parse(raw);
+    return isStory(story) ? story : null;
+  } catch {
+    return null;
+  }
+}
+
+function isStory(value) {
+  if (!value || typeof value !== 'object') return false;
+  if (typeof value.id !== 'string' || !value.id.startsWith('story-') || value.id.length > 80) return false;
+  if (typeof value.title !== 'string' || !value.title.trim() || value.title.length > 200) return false;
+  if (typeof value.story !== 'string' || value.story.length > 30000) return false;
+  if (!isQuestionList(value.storyQuestions) || !isQuestionList(value.wordQuestions)) return false;
+  return value.storyQuestions.length + value.wordQuestions.length >= 1;
+}
+
+function isQuestionList(list) {
+  return (
+    Array.isArray(list) &&
+    list.length <= 20 &&
+    list.every(
+      (question) =>
+        question &&
+        typeof question.title === 'string' &&
+        question.title.length > 0 &&
+        question.title.length <= 2000 &&
+        Array.isArray(question.alternatives) &&
+        question.alternatives.length >= 2 &&
+        question.alternatives.length <= 8 &&
+        question.alternatives.every((item) => typeof item === 'string' && item.length > 0 && item.length <= 500) &&
+        Number.isInteger(question.correct) &&
+        question.correct >= 0 &&
+        question.correct < question.alternatives.length,
+    )
+  );
 }
 
 function isQuiz(value) {

@@ -1,29 +1,58 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, Trophy, XCircle } from '@phosphor-icons/react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Check, Play } from '@phosphor-icons/react';
 import type { Question } from '../data/quizzes';
-import { loadStoryPack } from '../lib/storyQuiz';
+import { loadStory, loadStoryPack, rememberStoryPack, type StoryPack } from '../lib/storyQuiz';
 
 type Item = Question & { kind: 'Story' | 'Word' };
 
-const PASS_PERCENT = 80;
+function questionsIn(pack: StoryPack): Item[] {
+  return [
+    ...pack.storyQuestions.map((question) => ({ ...question, kind: 'Story' as const })),
+    ...pack.wordQuestions.map((question) => ({ ...question, kind: 'Word' as const })),
+  ];
+}
 
 export function StoryPracticePage() {
   const navigate = useNavigate();
-  const pack = loadStoryPack();
-  const items: Item[] = pack
-    ? [
-        ...pack.storyQuestions.map((question) => ({ ...question, kind: 'Story' as const })),
-        ...pack.wordQuestions.map((question) => ({ ...question, kind: 'Word' as const })),
-      ]
-    : [];
+  const [params] = useSearchParams();
+  const id = params.get('id');
+  const [pack, setPack] = useState<StoryPack | null>(null);
+  const [ready, setReady] = useState(false);
+  const [mode, setMode] = useState<'review' | 'play'>('review');
   const [index, setIndex] = useState(0);
   const [points, setPoints] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [locked, setLocked] = useState(false);
-  const [done, setDone] = useState(false);
+  const [answers, setAnswers] = useState<(number | null)[]>([]);
+  const [played, setPlayed] = useState(false);
 
-  if (!pack || items.length === 0) {
+  useEffect(() => {
+    let cancelled = false;
+    const request = id ? loadStory(id) : Promise.resolve(loadStoryPack());
+    request.then((next) => {
+      if (cancelled) return;
+      if (next) rememberStoryPack(next);
+      setPack(next);
+      setMode('review');
+      setPlayed(false);
+      setAnswers([]);
+      setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  if (!ready) {
+    return (
+      <main className="screen">
+        <p className="empty">Loading…</p>
+      </main>
+    );
+  }
+
+  if (!pack) {
     return (
       <main className="screen">
         <p className="empty">Make a story quiz first.</p>
@@ -36,30 +65,65 @@ export function StoryPracticePage() {
     );
   }
 
-  if (done) {
-    const percent = Math.round((points / items.length) * 100);
-    const passed = percent >= PASS_PERCENT;
+  const items = questionsIn(pack);
+
+  function play() {
+    setMode('play');
+    setIndex(0);
+    setPoints(0);
+    setSelected(null);
+    setLocked(false);
+    setAnswers([]);
+    setPlayed(false);
+  }
+
+  if (mode === 'review') {
     return (
       <main className="screen finish">
-        <header className={`finish-result ${passed ? 'passed' : 'failed'}`}>
-          {passed ? <Trophy size={48} color="#00B37E" weight="duotone" /> : <XCircle size={48} color="#F75A68" weight="duotone" />}
-          <p className="finish-score">{percent}%</p>
-          <h1>{passed ? 'You understood the story' : 'Read the story once more'}</h1>
-          <p>
-            {points} of {items.length} correct. You need {PASS_PERCENT}% to pass.
-          </p>
-          <p className="finish-quiz-name">{pack.title}</p>
+        <header className="header">
+          <button className="icon-button" type="button" aria-label="Back to stories" onClick={() => navigate('/story')}>
+            <ArrowLeft size={28} />
+          </button>
+          <div className="header-copy">
+            <h1>{pack.title}</h1>
+            <p>{played ? `${points} of ${items.length} correct` : 'Questions and answers'}</p>
+          </div>
         </header>
+
         <section className="story-recap">
           <h2>The story</h2>
           <p>{pack.story}</p>
         </section>
+
+        <section className="review-list" aria-label="Questions and answers">
+          {items.map((question, questionIndex) => {
+            const correctText = question.alternatives[question.correct];
+            const chosen = answers[questionIndex];
+            const wasCorrect = played && chosen === question.correct;
+            const skipped = played && (chosen === null || chosen === undefined);
+            return (
+              <article key={`${question.kind}-${questionIndex}`} className="review-card">
+                <p className="review-index">
+                  {question.kind === 'Story' ? 'Story question' : 'Word meaning'} {questionIndex + 1}
+                </p>
+                <h2>{question.title}</h2>
+                <p className="answer-line correct">Answer: {correctText}</p>
+                {played && !wasCorrect && (
+                  <p className={`answer-line ${skipped ? 'skipped' : 'wrong'}`}>
+                    {skipped ? 'Your answer: Skipped' : `Your answer: ${question.alternatives[chosen as number]}`}
+                  </p>
+                )}
+              </article>
+            );
+          })}
+        </section>
+
         <div className="finish-actions">
-          <button className="btn" type="button" onClick={() => navigate('/story')}>
-            New story
+          <button className="btn" type="button" onClick={play}>
+            <Play size={20} weight="fill" /> {played ? 'Play again' : 'Play'}
           </button>
-          <button className="btn-outline" type="button" onClick={() => navigate('/')}>
-            Back to home
+          <button className="btn-outline" type="button" onClick={() => navigate('/story')}>
+            Back to stories
           </button>
         </div>
       </main>
@@ -73,11 +137,15 @@ export function StoryPracticePage() {
     if (locked || selected === null) return;
     const correct = selected === item.correct;
     const nextPoints = points + (correct ? 1 : 0);
+    const nextAnswers = [...answers];
+    nextAnswers[index] = selected;
     setLocked(true);
     setPoints(nextPoints);
+    setAnswers(nextAnswers);
     window.setTimeout(() => {
       if (index + 1 >= items.length) {
-        setDone(true);
+        setPlayed(true);
+        setMode('review');
         return;
       }
       setIndex((current) => current + 1);
@@ -91,7 +159,7 @@ export function StoryPracticePage() {
       <div className="quiz-scroll">
         <div className="quiz-heading">
           <div className="quiz-title-row">
-            <button className="icon-button" type="button" aria-label="Back to story" onClick={() => navigate('/story')}>
+            <button className="icon-button" type="button" aria-label="Back to answers" onClick={() => setMode('review')}>
               <ArrowLeft size={24} />
             </button>
             <h2>{pack.title}</h2>
