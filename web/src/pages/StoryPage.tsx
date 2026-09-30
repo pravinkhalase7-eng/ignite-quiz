@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Camera, Image as ImageIcon } from '@phosphor-icons/react';
-import { generateStoryPack, llmSettings, saveLlmSettings, saveStoryPack, type LlmProvider } from '../lib/storyQuiz';
+import { generateStoryPack, llmSettings, saveLlmSettings, saveStoryPack, serverHasGemini, type LlmProvider } from '../lib/storyQuiz';
 
 export function StoryPage() {
   const navigate = useNavigate();
@@ -10,8 +10,13 @@ export function StoryPage() {
   const [photo, setPhoto] = useState<File | null>(null);
   const [apiKey, setApiKey] = useState(saved.key);
   const [provider, setProvider] = useState<LlmProvider>(saved.provider);
+  const [needsKey, setNeedsKey] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    serverHasGemini().then((ready) => setNeedsKey(!ready));
+  }, []);
 
   async function createQuiz(event: React.FormEvent) {
     event.preventDefault();
@@ -74,23 +79,27 @@ export function StoryPage() {
           />
         </label>
         {photo && <p className="hint">Photo ready: {photo.name}</p>}
-        <label>
-          Model
-          <select value={provider} onChange={(event) => setProvider(event.target.value as LlmProvider)}>
-            <option value="gemini">Gemini</option>
-            <option value="openai">OpenAI</option>
-          </select>
-        </label>
-        <label>
-          API key
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
-            placeholder="Saved only in this browser"
-            autoComplete="off"
-          />
-        </label>
+        {needsKey && (
+          <>
+            <label>
+              Model
+              <select value={provider} onChange={(event) => setProvider(event.target.value as LlmProvider)}>
+                <option value="gemini">Gemini</option>
+                <option value="openai">OpenAI</option>
+              </select>
+            </label>
+            <label>
+              API key
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+                placeholder="Saved only in this browser"
+                autoComplete="off"
+              />
+            </label>
+          </>
+        )}
         {error && <p className="login-error">{error}</p>}
         <button className="btn" type="submit" disabled={busy}>
           {busy ? 'Making questions…' : 'Make story quiz'}

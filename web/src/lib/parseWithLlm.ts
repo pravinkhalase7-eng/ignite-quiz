@@ -67,7 +67,7 @@ async function askModel(provider: LlmProvider, apiKey: string, questionsText: st
 
 async function gemini(apiKey: string, prompt: string) {
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -78,8 +78,15 @@ async function gemini(apiKey: string, prompt: string) {
     },
   );
   if (!response.ok) throw new Error(await errorMessage(response, 'Gemini'));
-  const data = (await response.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-  return data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('') ?? '';
+  const data = (await response.json()) as {
+    candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[];
+  };
+  return (
+    data.candidates?.[0]?.content?.parts
+      ?.filter((part) => !part.thought)
+      .map((part) => part.text ?? '')
+      .join('') ?? ''
+  );
 }
 
 async function openai(apiKey: string, prompt: string) {

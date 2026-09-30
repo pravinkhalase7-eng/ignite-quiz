@@ -2,3 +2,6 @@
 web/dist
 .git
 .expo
+**/.env
+**/.env.local
+!**/.env.example

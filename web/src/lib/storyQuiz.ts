@@ -23,16 +23,28 @@ export function saveStoryPack(pack: StoryPack) {
   sessionStorage.setItem(PACK_KEY, JSON.stringify(pack));
 }
 
+export function serverHasGemini() {
+  return fetch('/api/llm', { credentials: 'include' })
+    .then((response) => response.json())
+    .then((data: { gemini?: boolean }) => Boolean(data.gemini))
+    .catch(() => false);
+}
+
 export async function generateStoryPack(input: { text: string; image?: File | null }): Promise<StoryPack> {
   const { key, provider } = llmSettings();
-  if (!key.trim()) {
+  const onServer = await serverHasGemini();
+  if (!onServer && !key.trim()) {
     throw new Error('Add a Gemini or OpenAI key on this page. It is saved only in this browser.');
   }
   const story = input.text.trim();
   if (!story && !input.image) throw new Error('Type a story, or add a photo.');
   const image = input.image ? await fileToImage(input.image) : null;
   const prompt = storyPrompt(story);
-  const raw = provider === 'gemini' ? await gemini(key, prompt, image) : await openai(key, prompt, image);
+  const raw = onServer
+    ? await geminiOnServer(prompt, image)
+    : provider === 'gemini'
+      ? await gemini(key, prompt, image)
+      : await openai(key, prompt, image);
   return normalizePack(raw, story);
 }
 
@@ -57,12 +69,24 @@ function storyPrompt(story: string) {
   ].join('\n');
 }
 
+async function geminiOnServer(prompt: string, image: { mime: string; data: string } | null) {
+  const response = await fetch('/api/llm/gemini', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, image }),
+  });
+  const data = (await response.json().catch(() => ({}))) as { text?: string; error?: string };
+  if (!response.ok) throw new Error(data.error || 'Gemini could not make the quiz.');
+  return data.text ?? '';
+}
+
 async function gemini(apiKey: string, prompt: string, image: { mime: string; data: string } | null) {
   const parts: Record<string, unknown>[] = [];
   if (image) parts.push({ inline_data: { mime_type: image.mime, data: image.data } });
   parts.push({ text: prompt });
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -73,8 +97,15 @@ async function gemini(apiKey: string, prompt: string, image: { mime: string; dat
     },
   );
   if (!response.ok) throw new Error(await errorMessage(response, 'Gemini'));
-  const data = (await response.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-  return data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('') ?? '';
+  const data = (await response.json()) as {
+    candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[];
+  };
+  return (
+    data.candidates?.[0]?.content?.parts
+      ?.filter((part) => !part.thought)
+      .map((part) => part.text ?? '')
+      .join('') ?? ''
+  );
 }
 
 async function openai(apiKey: string, prompt: string, image: { mime: string; data: string } | null) {

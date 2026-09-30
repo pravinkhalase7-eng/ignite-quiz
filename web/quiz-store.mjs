@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   authEnabled,
   clearSessionCookie,
@@ -17,6 +18,27 @@ import {
 
 const DATA = process.env.QUIZ_DATA || path.join(process.cwd(), 'data', 'quizzes.json');
 const ICONS = new Set(['toggle', 'code', 'git', 'paint', 'cloud', 'device', 'file']);
+
+loadServerEnv();
+
+function loadServerEnv() {
+  if (process.env.GEMINI_API_KEY) return;
+  try {
+    const file = path.join(path.dirname(fileURLToPath(import.meta.url)), '.env');
+    const text = fs.readFileSync(file, 'utf8');
+    for (const line of text.split('\n')) {
+      const match = line.match(/^\s*GEMINI_API_KEY\s*=\s*(.*?)\s*$/);
+      if (!match || !match[1]) continue;
+      let value = match[1];
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      process.env.GEMINI_API_KEY = value;
+    }
+  } catch {
+    // The live server gets GEMINI_API_KEY from its environment.
+  }
+}
 
 export function readQuizzes() {
   try {
@@ -38,6 +60,20 @@ export function quizApi(req, res, next) {
   if (url.startsWith('/api/auth') || url.startsWith('/api/history') || (authEnabled() && url.startsWith('/api/quizzes'))) {
     handleAccount(req, res, url).catch((error) => {
       sendJson(res, 500, { error: error instanceof Error ? error.message : 'Server error.' });
+    });
+    return;
+  }
+
+  if (url === '/api/llm' && req.method === 'GET') {
+    sendJson(res, 200, { gemini: Boolean(process.env.GEMINI_API_KEY) });
+    return;
+  }
+
+  if (url === '/api/llm/gemini' && req.method === 'POST') {
+    readBody(req, (raw) => {
+      geminiFromServer(raw)
+        .then((result) => sendJson(res, result.status, result.body))
+        .catch(() => sendJson(res, 502, { error: 'Gemini could not be reached.' }));
     });
     return;
   }
@@ -217,6 +253,54 @@ function isQuiz(value) {
       question.correct >= 0 &&
       question.correct < question.alternatives.length,
   );
+}
+
+async function geminiFromServer(raw) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return { status: 503, body: { error: 'Gemini is not set up on this server.' } };
+
+  let body;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return { status: 400, body: { error: 'Invalid request.' } };
+  }
+
+  const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+  if (!prompt || prompt.length > 100_000) return { status: 400, body: { error: 'Type a story, or add a photo.' } };
+
+  const image = body.image;
+  const parts = [];
+  if (image && typeof image.data === 'string') {
+    const mime = typeof image.mime === 'string' ? image.mime : 'image/jpeg';
+    if (!mime.startsWith('image/') || image.data.length > 6_000_000) {
+      return { status: 400, body: { error: 'That photo is too large.' } };
+    }
+    parts.push({ inline_data: { mime_type: mime, data: image.data } });
+  }
+  parts.push({ text: prompt });
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts }],
+        generationConfig: { temperature: 0.4, responseMimeType: 'application/json' },
+      }),
+    },
+  );
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = data?.error?.message || 'Gemini could not make the quiz.';
+    return { status: response.status, body: { error: String(message).slice(0, 180) } };
+  }
+  const text = (data.candidates?.[0]?.content?.parts ?? [])
+    .filter((part) => !part.thought)
+    .map((part) => part.text ?? '')
+    .join('');
+  return { status: 200, body: { text } };
 }
 
 function sendJson(res, status, body) {
