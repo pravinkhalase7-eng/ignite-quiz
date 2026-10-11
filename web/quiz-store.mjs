@@ -19,6 +19,7 @@ import {
   saveStory,
   sessionCookie,
 } from './account.mjs';
+import { explainJeeQuestion, jeeCatalog, jeeChoices, jeeTopics, makeJeeQuiz } from './jee-bank.mjs';
 
 const DATA = process.env.QUIZ_DATA || path.join(process.cwd(), 'data', 'quizzes.json');
 const STORIES = process.env.STORY_DATA || path.join(process.cwd(), 'data', 'stories.json');
@@ -86,10 +87,106 @@ export function quizApi(req, res, next) {
   }
 
   if (url === '/api/llm/gemini' && req.method === 'POST') {
+    const start = () => {
+      readBody(req, res, (raw) => {
+        geminiFromServer(raw)
+          .then((result) => sendJson(res, result.status, result.body))
+          .catch(() => sendJson(res, 502, { error: 'Gemini could not be reached.' }));
+      });
+    };
+    if (authEnabled()) {
+      currentUser(req)
+        .then((user) => {
+          if (!user) {
+            sendJson(res, 401, { error: 'Sign in with Google.' });
+            return;
+          }
+          start();
+        })
+        .catch((error) => {
+          sendJson(res, 500, { error: error instanceof Error ? error.message : 'Server error.' });
+        });
+      return;
+    }
+    start();
+    return;
+  }
+
+  if (url === '/api/jee' && req.method === 'GET') {
+    try {
+      sendJson(res, 200, jeeCatalog());
+    } catch {
+      sendJson(res, 500, { error: 'Could not read the JEE papers.' });
+    }
+    return;
+  }
+
+  if (url === '/api/jee/quiz' && req.method === 'POST') {
     readBody(req, res, (raw) => {
-      geminiFromServer(raw)
+      let body;
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        sendJson(res, 400, { error: 'Invalid request.' });
+        return;
+      }
+      const year = String(body.year || '');
+      const subject = String(body.subject || '');
+      if (!/^\d{4}$/.test(year) || !['Physics', 'Chemistry', 'Mathematics'].includes(subject)) {
+        sendJson(res, 400, { error: 'Choose a year and a subject.' });
+        return;
+      }
+      makeJeeQuiz({ year, subject, count: body.count, topic: body.topic })
         .then((result) => sendJson(res, result.status, result.body))
-        .catch(() => sendJson(res, 502, { error: 'Gemini could not be reached.' }));
+        .catch(() => sendJson(res, 500, { error: 'Could not start that quiz.' }));
+    });
+    return;
+  }
+
+  if (url === '/api/jee/topics' && req.method === 'POST') {
+    readBody(req, res, (raw) => {
+      let body;
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        sendJson(res, 400, { error: 'Invalid request.' });
+        return;
+      }
+      jeeTopics({ year: body.year, subject: body.subject })
+        .then((result) => sendJson(res, result.status, result.body))
+        .catch(() => sendJson(res, 500, { error: 'Could not group those questions.' }));
+    });
+    return;
+  }
+
+  if (url === '/api/jee/choices' && req.method === 'POST') {
+    readBody(req, res, (raw) => {
+      let body;
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        sendJson(res, 400, { error: 'Invalid request.' });
+        return;
+      }
+      jeeChoices(String(body.id || ''))
+        .then((result) => sendJson(res, result.status, result.body))
+        .catch(() => sendJson(res, 500, { error: 'Could not read those options.' }));
+    });
+    return;
+  }
+
+  if (url === '/api/jee/explain' && req.method === 'POST') {
+    readBody(req, res, (raw) => {
+      let body;
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        sendJson(res, 400, { error: 'Invalid request.' });
+        return;
+      }
+      explainJeeQuestion(String(body.id || ''))
+        .then((result) => sendJson(res, result.status, result.body))
+        .catch(() => sendJson(res, 500, { error: 'Could not explain that question.' }));
     });
     return;
   }

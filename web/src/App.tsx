@@ -7,9 +7,10 @@ import { HistoryPage } from './pages/HistoryPage';
 import { UploadPage } from './pages/UploadPage';
 import { StoryPage } from './pages/StoryPage';
 import { StoryPracticePage } from './pages/StoryPracticePage';
+import { JeePage } from './pages/JeePage';
+import { JeePlayPage } from './pages/JeePlayPage';
 import { LoginPage } from './pages/LoginPage';
-
-type Session = { google: boolean; user: { id: string; email: string; name: string } | null };
+import { SessionProvider, type Session } from './lib/session';
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -37,6 +38,7 @@ export function App() {
     <BrowserRouter>
       <div className="app-shell">
         <div className="phone">
+          <SessionProvider session={session} setSession={setSession}>
           {session.google && !session.user ? (
             <LoginGate />
           ) : (
@@ -46,11 +48,14 @@ export function App() {
               <Route path="/upload" element={<UploadPage />} />
               <Route path="/story" element={<StoryPage />} />
               <Route path="/story/practice" element={<StoryPracticePage />} />
+              <Route path="/jee" element={<JeePage />} />
+              <Route path="/jee/play" element={<JeePlayPage />} />
               <Route path="/quiz/:id" element={<QuizPage />} />
               <Route path="/finish" element={<FinishPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           )}
+          </SessionProvider>
         </div>
       </div>
     </BrowserRouter>

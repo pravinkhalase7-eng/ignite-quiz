@@ -12,11 +12,14 @@ import {
   Trash,
   Trophy,
   BookOpen,
+  GraduationCap,
+  SignOut,
 } from '@phosphor-icons/react';
 import type { Quiz } from '../data/quizzes';
 import { Dialog } from '../components/Dialog';
 import { LevelBars } from '../components/LevelBars';
 import { customQuizRemove, getAllQuizzes, refreshCustomQuizzes } from '../lib/storage';
+import { useSession } from '../lib/session';
 
 const ICONS = {
   toggle: ToggleLeft,
@@ -36,6 +39,7 @@ const FILTERS = [
 
 export function HomePage() {
   const navigate = useNavigate();
+  const session = useSession();
   const [levels, setLevels] = useState<number[]>([1, 2, 3]);
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [quizzes, setQuizzes] = useState(() => getAllQuizzes());
@@ -83,6 +87,14 @@ export function HomePage() {
           <p>Train your knowledge</p>
         </div>
         <div className="header-end">
+          {session?.user && (
+            <>
+              <span className="account-name">{session.user.name}</span>
+              <button className="icon-button" type="button" aria-label="Sign out" onClick={() => session.signOut()}>
+                <SignOut size={26} />
+              </button>
+            </>
+          )}
           <button className="icon-button" type="button" aria-label="Open history" onClick={() => navigate('/history')}>
             <Trophy size={28} />
           </button>
@@ -114,6 +126,9 @@ export function HomePage() {
         </button>
         <button className="btn-outline" type="button" onClick={() => navigate('/story')}>
           <BookOpen size={20} weight="bold" /> Story quiz
+        </button>
+        <button className="btn-outline" type="button" onClick={() => navigate('/jee')}>
+          <GraduationCap size={20} weight="bold" /> JEE Main
         </button>
       </div>
 

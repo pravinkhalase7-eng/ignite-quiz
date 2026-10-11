@@ -10,6 +10,7 @@ npm-debug.*
 *.orig.*
 web-build/
 web/data/
+jee-main-papers/
 .env
 web/.env
 web/.env.local
