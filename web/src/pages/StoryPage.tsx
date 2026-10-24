@@ -24,7 +24,7 @@ export function StoryPage() {
   const [text, setText] = useState('');
   const [pages, setPages] = useState<PageShot[]>([]);
   const [apiKey, setApiKey] = useState(saved.key);
-  const [provider, setProvider] = useState<LlmProvider>(saved.provider);
+  const [provider] = useState<LlmProvider>(saved.provider);
   const [needsKey, setNeedsKey] = useState(false);
   const [stories, setStories] = useState<StoryPack[]>([]);
   const [pendingDelete, setPendingDelete] = useState<StoryPack | null>(null);
@@ -153,26 +153,18 @@ export function StoryPage() {
             ? 'Add the pages in reading order. You can add more before making the quiz.'
             : `${pages.length} ${pages.length === 1 ? 'page' : 'pages'} ready. Add more, or make the quiz.`}
         </p>
-        {needsKey && (
-          <>
-            <label>
-              Model
-              <select value={provider} onChange={(event) => setProvider(event.target.value as LlmProvider)}>
-                <option value="gemini">Gemini</option>
-                <option value="openai">OpenAI</option>
-              </select>
-            </label>
-            <label>
-              API key
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder="Saved only in this browser"
-                autoComplete="off"
-              />
-            </label>
-          </>
+        {needsKey && <p className="hint">Gemini is not set up on this server yet.</p>}
+        {provider === 'openai' && (
+          <label>
+            OpenAI key
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              placeholder="Saved only in this browser"
+              autoComplete="off"
+            />
+          </label>
         )}
         {error && <p className="login-error">{error}</p>}
         <button className="btn" type="submit" disabled={busy || (pages.length === 0 && !text.trim())}>

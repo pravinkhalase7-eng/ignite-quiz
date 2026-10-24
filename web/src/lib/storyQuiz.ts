@@ -63,8 +63,11 @@ export function serverHasGemini() {
 export async function generateStoryPack(input: { text: string; images?: File[] }): Promise<StoryPack> {
   const { key, provider } = llmSettings();
   const onServer = await serverHasGemini();
-  if (!onServer && !key.trim()) {
-    throw new Error('Add a Gemini or OpenAI key on this page. It is saved only in this browser.');
+  if (provider !== 'openai' && !onServer) {
+    throw new Error('Gemini is not set up on this server.');
+  }
+  if (provider === 'openai' && !key.trim()) {
+    throw new Error('Add an OpenAI key on this page. It is saved only in this browser.');
   }
   const story = input.text.trim();
   const files = input.images ?? [];
@@ -73,11 +76,7 @@ export async function generateStoryPack(input: { text: string; images?: File[] }
   const images = [];
   for (const file of files) images.push(await fileToImage(file));
   const prompt = storyPrompt(story, images.length);
-  const raw = onServer
-    ? await geminiOnServer(prompt, images)
-    : provider === 'gemini'
-      ? await gemini(key, prompt, images)
-      : await openai(key, prompt, images);
+  const raw = provider === 'openai' ? await openai(key, prompt, images) : await geminiOnServer(prompt, images);
   return normalizePack(raw, story);
 }
 
@@ -118,34 +117,6 @@ async function geminiOnServer(prompt: string, images: { mime: string; data: stri
   const data = (await response.json().catch(() => ({}))) as { text?: string; error?: string };
   if (!response.ok) throw new Error(data.error || 'Gemini could not make the quiz.');
   return data.text ?? '';
-}
-
-async function gemini(apiKey: string, prompt: string, images: { mime: string; data: string }[]) {
-  const parts: Record<string, unknown>[] = images.map((image) => ({
-    inline_data: { mime_type: image.mime, data: image.data },
-  }));
-  parts.push({ text: prompt });
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: { temperature: 0.4, responseMimeType: 'application/json' },
-      }),
-    },
-  );
-  if (!response.ok) throw new Error(await errorMessage(response, 'Gemini'));
-  const data = (await response.json()) as {
-    candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[];
-  };
-  return (
-    data.candidates?.[0]?.content?.parts
-      ?.filter((part) => !part.thought)
-      .map((part) => part.text ?? '')
-      .join('') ?? ''
-  );
 }
 
 async function openai(apiKey: string, prompt: string, images: { mime: string; data: string }[]) {

@@ -31,7 +31,7 @@ export async function parseQuizWithLlm(documentText: string, provider: LlmProvid
   }
 
   if (questions.length === 0) {
-    throw new Error('The model did not return any questions. Check the API key and try again.');
+    throw new Error('The model did not return any questions. Try again.');
   }
   return questions;
 }
@@ -61,32 +61,20 @@ async function askModel(provider: LlmProvider, apiKey: string, questionsText: st
     questionsText,
   ].join('\n');
 
-  const raw = provider === 'gemini' ? await gemini(apiKey, prompt) : await openai(apiKey, prompt);
+  const raw = provider === 'gemini' ? await geminiOnServer(prompt) : await openai(apiKey, prompt);
   return normalize(raw);
 }
 
-async function gemini(apiKey: string, prompt: string) {
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
-      }),
-    },
-  );
-  if (!response.ok) throw new Error(await errorMessage(response, 'Gemini'));
-  const data = (await response.json()) as {
-    candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[];
-  };
-  return (
-    data.candidates?.[0]?.content?.parts
-      ?.filter((part) => !part.thought)
-      .map((part) => part.text ?? '')
-      .join('') ?? ''
-  );
+async function geminiOnServer(prompt: string) {
+  const response = await fetch('/api/llm/gemini', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  });
+  const data = (await response.json().catch(() => ({}))) as { text?: string; error?: string };
+  if (!response.ok) throw new Error(data.error || 'Gemini could not read this document.');
+  return data.text ?? '';
 }
 
 async function openai(apiKey: string, prompt: string) {

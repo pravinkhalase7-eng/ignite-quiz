@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileArrowUp } from '@phosphor-icons/react';
 import type { Question, Quiz } from '../data/quizzes';
 import { parseQuizText } from '../lib/parseQuiz';
 import { llmSettings, parseQuizWithLlm, saveLlmSettings, type LlmProvider } from '../lib/parseWithLlm';
+import { serverHasGemini } from '../lib/storyQuiz';
 import { readDocument } from '../lib/readDocument';
 import { customQuizAdd } from '../lib/storage';
 
@@ -25,6 +26,11 @@ export function UploadPage() {
   const saved = llmSettings();
   const [apiKey, setApiKey] = useState(saved.key);
   const [provider, setProvider] = useState<LlmProvider>(saved.provider);
+  const [serverGemini, setServerGemini] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    serverHasGemini().then(setServerGemini);
+  }, []);
 
   async function scan(event: React.FormEvent) {
     event.preventDefault();
@@ -47,10 +53,11 @@ export function UploadPage() {
     setBusy(true);
     try {
       const text = await readDocument(file);
-      saveLlmSettings(apiKey, provider);
-      const parsed = apiKey.trim()
-        ? await parseQuizWithLlm(text, provider, apiKey.trim())
-        : parseQuizText(text);
+      saveLlmSettings(provider === 'openai' ? apiKey : '', provider);
+      const parsed =
+        provider === 'gemini' || apiKey.trim()
+          ? await parseQuizWithLlm(text, provider, apiKey.trim())
+          : parseQuizText(text);
       setQuestions(parsed);
     } catch (scanError) {
       setError(scanError instanceof Error ? scanError.message : 'Could not read that document.');
@@ -128,18 +135,24 @@ export function UploadPage() {
             <option value="openai">OpenAI</option>
           </select>
         </label>
-        <label>
-          API key
-          <input
-            type="password"
-            value={apiKey}
-            autoComplete="off"
-            placeholder="Optional. Used to read messy papers"
-            onChange={(event) => setApiKey(event.target.value)}
-          />
-        </label>
+        {provider === 'openai' && (
+          <label>
+            OpenAI key
+            <input
+              type="password"
+              value={apiKey}
+              autoComplete="off"
+              placeholder="Saved only in this browser"
+              onChange={(event) => setApiKey(event.target.value)}
+            />
+          </label>
+        )}
         <p className="hint">
-          Leave the key empty to read numbered questions and an answer table in the browser. Add a Gemini or OpenAI key when the layout is messy.
+          {provider === 'gemini'
+            ? serverGemini === false
+              ? 'Gemini is not set up on this server yet.'
+              : 'Gemini runs on the server. The key stays there.'
+            : 'An OpenAI key is saved only in this browser. Leave Gemini selected to use the server.'}
         </p>
         <label className="file-field">
           <FileArrowUp size={22} />
