@@ -11,6 +11,7 @@ const ANSWERS = path.join(ROOT, 'answers.json');
 const EXPLANATIONS = path.join(ROOT, 'explanations.json');
 const CHOICES = path.join(ROOT, 'choices.json');
 const TOPICS = path.join(ROOT, 'topics.json');
+const RENDER = path.join(ROOT, 'render');
 const SYLLABUS = {
   Physics: [
     'Units and Measurement',
@@ -113,42 +114,28 @@ export async function makeJeeQuiz({ year, subject, count, topic }) {
   const choiceBank = readJson(CHOICES);
   const ready = shuffle(pool.filter((item) => Number.isInteger(answers[item.id])));
   const fresh = shuffle(pool.filter((item) => !Number.isInteger(answers[item.id])));
-  const list = [...ready, ...fresh];
+  const selected = ready.slice(0, size);
+  const extras = geminiStopped ? [] : fresh.slice(0, Math.max(0, size - selected.length));
+  await renderRecords([...selected, ...extras]);
   const questions = [];
+  for (const item of selected) {
+    if (!hasRender(item.id)) continue;
+    questions.push(questionPayload(item, answers[item.id], choiceBank[item.id]));
+  }
   let cursor = 0;
-  async function take() {
-    while (questions.length < size && cursor < list.length) {
-      const item = list[cursor];
+  async function solveOne() {
+    while (questions.length < size && cursor < extras.length) {
+      const item = extras[cursor];
       cursor += 1;
-      if (!Number.isInteger(answers[item.id]) && geminiStopped) continue;
-      let images = null;
-      try {
-        images = await imagesFor(item);
-      } catch {
-        images = null;
-      }
-      if (!images) continue;
-      let correct = answers[item.id];
-      if (!Number.isInteger(correct)) {
-        correct = await solveImages(images);
-        if (!Number.isInteger(correct)) continue;
-        answers[item.id] = correct;
-      }
-      if (questions.length >= size) return;
-      const savedChoices = await localChoices(images.options, choiceBank[item.id]);
-      if (savedChoices) choiceBank[item.id] = savedChoices;
-      questions.push({
-        id: item.id,
-        stem: `data:image/png;base64,${images.stem.toString('base64')}`,
-        options: images.options.map((png) => `data:image/png;base64,${png.toString('base64')}`),
-        ...(savedChoices ? { choices: savedChoices } : {}),
-        correct,
-      });
+      if (!hasRender(item.id)) continue;
+      const correct = await solveImages(await readRender(item.id));
+      if (!Number.isInteger(correct) || questions.length >= size) continue;
+      answers[item.id] = correct;
+      questions.push(questionPayload(item, correct, choiceBank[item.id]));
     }
   }
-  await Promise.all([take(), take(), take()]);
+  if (questions.length < size) await Promise.all([solveOne(), solveOne(), solveOne()]);
   writeAnswers(answers);
-  writeJson(CHOICES, choiceBank);
   if (!questions.length) {
     const error = geminiStopped
       ? 'New answers are paused because the Gemini credits are used up. Pick a subject that already has prepared questions, or add credits and try again.'
@@ -495,6 +482,80 @@ async function imagesFor(record, existing) {
     if (!existing) await doc.cleanup?.();
   }
   return match;
+}
+
+export function jeeImageFile(id, part) {
+  const dir = renderDir(id);
+  if (!dir) return null;
+  const file = path.join(dir, part === 'stem' ? 'stem.png' : `${part}.png`);
+  return fs.existsSync(file) ? file : null;
+}
+
+function renderDir(id) {
+  if (!/^\d{4}\/[^/]+\/(Physics|Chemistry|Mathematics)\/\d+$/.test(id)) return null;
+  const parts = id.split('/');
+  if (parts.some((part) => part === '.' || part === '..')) return null;
+  return path.join(RENDER, ...parts);
+}
+
+function hasRender(id) {
+  return Boolean(jeeImageFile(id, 'stem') && jeeImageFile(id, '0') && jeeImageFile(id, '1') && jeeImageFile(id, '2') && jeeImageFile(id, '3'));
+}
+
+function questionPayload(item, correct, savedChoices) {
+  const choices = isChoiceList(savedChoices) ? savedChoices : ['FIGURE', 'FIGURE', 'FIGURE', 'FIGURE'];
+  return {
+    id: item.id,
+    stem: `/api/jee/image/${item.id}/stem`,
+    options: [0, 1, 2, 3].map((index) => `/api/jee/image/${item.id}/${index}`),
+    choices,
+    correct,
+  };
+}
+
+async function readRender(id) {
+  const files = ['stem', '0', '1', '2', '3'].map((part) => jeeImageFile(id, part));
+  const [stem, ...options] = files.map((file) => fs.readFileSync(file));
+  return { stem, options };
+}
+
+function writeRender(id, images) {
+  const dir = renderDir(id);
+  if (!dir) return;
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'stem.png'), images.stem);
+  images.options.forEach((png, index) => fs.writeFileSync(path.join(dir, `${index}.png`), png));
+}
+
+async function renderRecords(records) {
+  const byFile = new Map();
+  for (const item of records) {
+    if (hasRender(item.id)) continue;
+    const group = byFile.get(item.file) || [];
+    group.push(item);
+    byFile.set(item.file, group);
+  }
+  for (const [file, group] of byFile) {
+    let doc = null;
+    try {
+      doc = await getDocument({ data: new Uint8Array(fs.readFileSync(file)), disableWorker: true, verbosity: 0 }).promise;
+    } catch {
+      continue;
+    }
+    try {
+      for (const item of group) {
+        if (hasRender(item.id)) continue;
+        try {
+          const images = await imagesFor(item, doc);
+          if (images) writeRender(item.id, images);
+        } catch {
+          // A question that cannot be cut out of the paper is skipped.
+        }
+      }
+    } finally {
+      try { await doc.cleanup?.(); } catch { /* The next paper opens on its own. */ }
+    }
+  }
 }
 
 function snapshot(open) {

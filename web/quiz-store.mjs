@@ -19,7 +19,7 @@ import {
   saveStory,
   sessionCookie,
 } from './account.mjs';
-import { explainJeeQuestion, jeeCatalog, jeeChoices, jeeTopics, makeJeeQuiz } from './jee-bank.mjs';
+import { explainJeeQuestion, jeeCatalog, jeeChoices, jeeImageFile, jeeTopics, makeJeeQuiz } from './jee-bank.mjs';
 
 const DATA = process.env.QUIZ_DATA || path.join(process.cwd(), 'data', 'quizzes.json');
 const STORIES = process.env.STORY_DATA || path.join(process.cwd(), 'data', 'stories.json');
@@ -109,6 +109,20 @@ export function quizApi(req, res, next) {
       return;
     }
     start();
+    return;
+  }
+
+  const imageMatch = url.match(/^\/api\/jee\/image\/(\d{4}\/[^/]+\/(?:Physics|Chemistry|Mathematics)\/\d+)\/(stem|[0-3])$/);
+  if (imageMatch && req.method === 'GET') {
+    const file = jeeImageFile(imageMatch[1], imageMatch[2]);
+    if (!file) {
+      sendJson(res, 404, { error: 'That question picture was not found.' });
+      return;
+    }
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    fs.createReadStream(file).pipe(res);
     return;
   }
 
