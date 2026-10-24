@@ -298,7 +298,7 @@ async function downloadOfficialPapers() {
       const folder = row.paper.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
       const dest = path.join(ROOT, row.year, folder, `${row.date}-shift-${row.shift}.pdf`);
       try {
-        await saveOfficialPdf(row.url.replace(/^https:\/\/nta\.ac\.in\//, 'https://www.nta.ac.in/'), dest);
+        await saveOfficialPdf(row.url, dest);
       } catch {
         // A shift that does not download is left out. The papers that saved still open.
       }
@@ -309,6 +309,12 @@ async function downloadOfficialPapers() {
   }
   await Promise.all([worker(), worker(), worker(), worker()]);
   paperNote = 'Reading the papers…';
+}
+
+function pdfHosts(url) {
+  const apex = url.replace(/^https:\/\/(?:www\.)?nta\.ac\.in\//, 'https://nta.ac.in/');
+  const www = url.replace(/^https:\/\/(?:www\.)?nta\.ac\.in\//, 'https://www.nta.ac.in/');
+  return apex === www ? [url] : [apex, www];
 }
 
 async function saveOfficialPdf(url, dest) {
@@ -322,15 +328,25 @@ async function saveOfficialPdf(url, dest) {
     }
     if (head.toString() === '%PDF-') return;
   }
-  const response = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0' },
-    signal: AbortSignal.timeout(90_000),
-  });
-  if (!response.ok) return;
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.length < 2000 || bytes.subarray(0, 5).toString() !== '%PDF-') return;
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.writeFileSync(dest, bytes);
+  let saved = false;
+  for (const candidate of pdfHosts(url)) {
+    try {
+      const response = await fetch(candidate, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(90_000),
+      });
+      if (!response.ok) continue;
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length < 2000 || bytes.subarray(0, 5).toString() !== '%PDF-') continue;
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.writeFileSync(dest, bytes);
+      saved = true;
+      break;
+    } catch {
+      // Try the other NTA hostname. One of them resets the connection.
+    }
+  }
+  if (!saved) throw new Error('Could not download that paper.');
 }
 
 async function scanPaper(paper) {
