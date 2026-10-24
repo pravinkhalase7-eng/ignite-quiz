@@ -31,7 +31,7 @@ export type JeeYear = {
 
 const PACK_KEY = 'ignite_jee_pack';
 
-export async function loadJeeCatalog(): Promise<{ ready: boolean; years: JeeYear[] }> {
+export async function loadJeeCatalog(): Promise<{ ready: boolean; years: JeeYear[]; note?: string; error?: string }> {
   const response = await fetch('/api/jee');
   if (!response.ok) throw new Error('Could not read the JEE papers.');
   return response.json();

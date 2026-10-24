@@ -69,21 +69,26 @@ const SUBJECTS = ['Physics', 'Chemistry', 'Mathematics'];
 
 let indexTask = null;
 
-const indexState = { started: false, ready: false, index: null };
+const indexState = { started: false, ready: false, index: null, error: '' };
+let paperNote = '';
 
 export function jeeCatalog() {
   if (!indexState.started) {
     indexState.started = true;
+    indexState.error = '';
     ensureIndex()
       .then((index) => {
         indexState.index = index;
         indexState.ready = true;
       })
-      .catch(() => {
-        indexState.started = false;
+      .catch((error) => {
+        indexState.error = error instanceof Error ? error.message : 'Could not read the JEE papers.';
+        indexState.index = { questions: [] };
+        indexState.ready = true;
       });
   }
-  if (!indexState.ready) return { ready: false, years: [] };
+  if (!indexState.ready) return { ready: false, years: [], note: paperNote || 'Reading the papers…' };
+  if (indexState.error) return { ready: true, years: [], error: indexState.error };
   return catalogFrom(indexState.index);
 }
 
@@ -186,14 +191,25 @@ function ensureIndex() {
 }
 
 async function readOrBuild() {
-  const papers = listPapers();
-  if (!papers.length) return { questions: [] };
+  fs.mkdirSync(ROOT, { recursive: true });
+  for (const name of ['topics.json', 'answers.json', 'choices.json', 'explanations.json']) seedJson(name);
+  let papers = listPapers();
+  if (!papers.length) {
+    await downloadOfficialPapers();
+    papers = listPapers();
+  }
+  if (!papers.length) throw new Error('No JEE Main papers were found.');
+  seedJson('index.json');
   try {
     const saved = JSON.parse(fs.readFileSync(INDEX, 'utf8'));
-    if (saved && saved.version === 2 && saved.count === papers.length && Array.isArray(saved.questions)) return saved;
+    if (saved && saved.version === 2 && saved.count === papers.length && Array.isArray(saved.questions)) {
+      bindPaperFiles(saved, papers);
+      if (saved.questions.every((item) => item.file && fs.existsSync(item.file))) return saved;
+    }
   } catch {
     // Build the index from the saved papers.
   }
+  paperNote = 'Reading the papers…';
   const questions = [];
   for (const paper of papers) {
     try {
@@ -237,6 +253,84 @@ function listPapers() {
     if (!previous || paper.rank < previous.rank) kept.set(key, paper);
   }
   return [...kept.values()];
+}
+
+const CATALOG = 'https://www.commerceinsights.co.in/jee-main-pyq-data.js?v=1';
+const REGIONAL = ['Kannada', 'Hindi', 'Assamese', 'Telugu', 'Bengali', 'Gujarati', 'Odia', 'Punjabi', 'Tamil', 'Marathi', 'Urdu', 'Malayalam'];
+
+function seedJson(name) {
+  const dest = path.join(ROOT, name);
+  if (fs.existsSync(dest)) return;
+  const src = path.join(path.dirname(fileURLToPath(import.meta.url)), 'jee-seed', name);
+  if (!fs.existsSync(src)) return;
+  fs.copyFileSync(src, dest);
+}
+
+function bindPaperFiles(index, papers) {
+  const byKey = new Map(papers.map((paper) => [`${paper.year}/${paper.name}`, paper.file]));
+  for (const item of index.questions) {
+    const file = byKey.get(`${item.year}/${path.basename(item.file)}`);
+    if (file) item.file = file;
+  }
+}
+
+function keepOfficial(name) {
+  if (!name.startsWith('B.Tech')) return false;
+  if (name.includes('English')) return true;
+  return !REGIONAL.some((lang) => name.includes(`(${lang}`));
+}
+
+async function downloadOfficialPapers() {
+  paperNote = 'Downloading the official JEE Main papers…';
+  const response = await fetch(CATALOG, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  if (!response.ok) throw new Error('Could not download the JEE Main papers.');
+  const text = await response.text();
+  const rows = [...text.matchAll(/\{"y":"(\d+)","p":"(.*?)","d":"(.*?)","s":"(.*?)","u":"(.*?)"\}/g)]
+    .map((match) => ({ year: match[1], paper: match[2], date: match[3], shift: match[4], url: match[5] }))
+    .filter((row) => keepOfficial(row.paper));
+  if (!rows.length) throw new Error('Could not download the JEE Main papers.');
+  let done = 0;
+  let cursor = 0;
+  async function worker() {
+    while (cursor < rows.length) {
+      const row = rows[cursor];
+      cursor += 1;
+      const folder = row.paper.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const dest = path.join(ROOT, row.year, folder, `${row.date}-shift-${row.shift}.pdf`);
+      try {
+        await saveOfficialPdf(row.url.replace(/^https:\/\/nta\.ac\.in\//, 'https://www.nta.ac.in/'), dest);
+      } catch {
+        // A shift that does not download is left out. The papers that saved still open.
+      }
+      done += 1;
+      paperNote = `Downloading the official JEE Main papers… ${done} of ${rows.length}`;
+      if (done % 10 === 0 || done === rows.length) console.log(paperNote);
+    }
+  }
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  paperNote = 'Reading the papers…';
+}
+
+async function saveOfficialPdf(url, dest) {
+  if (fs.existsSync(dest) && fs.statSync(dest).size > 2000) {
+    const head = Buffer.alloc(5);
+    const fd = fs.openSync(dest, 'r');
+    try {
+      fs.readSync(fd, head, 0, 5, 0);
+    } finally {
+      fs.closeSync(fd);
+    }
+    if (head.toString() === '%PDF-') return;
+  }
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0' },
+    signal: AbortSignal.timeout(90_000),
+  });
+  if (!response.ok) return;
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length < 2000 || bytes.subarray(0, 5).toString() !== '%PDF-') return;
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.writeFileSync(dest, bytes);
 }
 
 async function scanPaper(paper) {

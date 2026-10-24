@@ -9,6 +9,7 @@ const COUNTS = [5, 10, 20];
 export function JeePage() {
   const navigate = useNavigate();
   const [ready, setReady] = useState(false);
+  const [status, setStatus] = useState('Reading the papers…');
   const [years, setYears] = useState<JeeYear[]>([]);
   const [year, setYear] = useState('');
   const [subject, setSubject] = useState<(typeof SUBJECTS)[number] | ''>('');
@@ -24,7 +25,13 @@ export function JeePage() {
       try {
         const catalog = await loadJeeCatalog();
         if (!live) return;
+        if (catalog.error) {
+          setError(catalog.error);
+          setReady(true);
+          return;
+        }
         if (!catalog.ready) {
+          setStatus(catalog.note || 'Reading the papers…');
           window.setTimeout(poll, 1000);
           return;
         }
@@ -95,7 +102,7 @@ export function JeePage() {
         </div>
       </header>
 
-      {!ready && !error && <p className="empty">Reading the papers…</p>}
+      {!ready && !error && <p className="empty">{status}</p>}
       {ready && years.length === 0 && <p className="empty">No JEE Main papers were found.</p>}
 
       {ready && years.length > 0 && (
