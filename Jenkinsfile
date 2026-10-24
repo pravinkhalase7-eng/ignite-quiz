@@ -23,13 +23,53 @@ pipeline {
 
         stage('Start app') {
             steps {
+                script {
+                    sh '''
+                        rm -f "$WORKSPACE/ignite-quiz.runtime.env"
+                        if [ -f /var/jenkins_home/ignite-quiz.env ]; then
+                          cp /var/jenkins_home/ignite-quiz.env "$WORKSPACE/ignite-quiz.runtime.env"
+                        else
+                          : > "$WORKSPACE/ignite-quiz.runtime.env"
+                        fi
+                    '''
+                    def credIds = ['ignite-quiz-env', 'ignite-quiz.env', 'ai-code-player-env-file', 'ai-code-player-env-file.env']
+                    for (def credId : credIds) {
+                        def ready = sh(
+                            script: '''grep -qE '^GEMINI_API_KEY=.+' "$WORKSPACE/ignite-quiz.runtime.env" && ! grep -qE '^GEMINI_API_KEY=(PASTE_|CHANGE_ME)?$' "$WORKSPACE/ignite-quiz.runtime.env"''',
+                            returnStatus: true,
+                        ) == 0
+                        if (ready) break
+                        try {
+                            withCredentials([file(credentialsId: credId, variable: 'ENV_FILE')]) {
+                                sh '''
+                                    line=$(grep -E '^GEMINI_API_KEY=.+' "$ENV_FILE" | grep -vE '^GEMINI_API_KEY=(PASTE_|CHANGE_ME)?$' | head -n 1 || true)
+                                    if [ -n "$line" ]; then
+                                      grep -vE '^GEMINI_API_KEY=' "$WORKSPACE/ignite-quiz.runtime.env" > "$WORKSPACE/ignite-quiz.runtime.env.tmp" || true
+                                      printf '%s\n' "$line" >> "$WORKSPACE/ignite-quiz.runtime.env.tmp"
+                                      mv "$WORKSPACE/ignite-quiz.runtime.env.tmp" "$WORKSPACE/ignite-quiz.runtime.env"
+                                      echo "GEMINI_API_KEY=SET"
+                                    fi
+                                '''
+                            }
+                        } catch (err) {
+                            echo "No Jenkins secret file ${credId}"
+                        }
+                    }
+                    sh '''
+                        if grep -qE '^GEMINI_API_KEY=.+' "$WORKSPACE/ignite-quiz.runtime.env" && ! grep -qE '^GEMINI_API_KEY=(PASTE_|CHANGE_ME)?$' "$WORKSPACE/ignite-quiz.runtime.env"; then
+                          echo "GEMINI_API_KEY=SET"
+                        else
+                          echo "GEMINI_API_KEY=MISSING"
+                        fi
+                    '''
+                }
                 sh '''
                     docker rm -f ignite-quiz || true
                     pgnet=$(docker inspect aiteacher-postgres --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}')
                     netarg=""
                     if [ -n "$pgnet" ]; then netarg="--network $pgnet"; fi
                     envarg=""
-                    if [ -f /var/jenkins_home/ignite-quiz.env ]; then envarg="--env-file /var/jenkins_home/ignite-quiz.env"; fi
+                    if [ -s "$PWD/ignite-quiz.runtime.env" ]; then envarg="--env-file $PWD/ignite-quiz.runtime.env"; fi
                     docker run -d --name ignite-quiz -p 4173:4173 $netarg $envarg -v ignite-quiz-data:/app/data -v ignite-quiz-papers:/jee-main-papers --restart unless-stopped ignite-quiz:latest
                     docker ps --filter name=ignite-quiz
                     edge=$(docker ps --format '{{.ID}} {{.Ports}}' | awk '/:80->80/ {print $1; exit}')

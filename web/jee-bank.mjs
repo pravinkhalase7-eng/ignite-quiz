@@ -834,12 +834,12 @@ export async function explainJeeQuestion(id) {
   let correct = answers[id];
   if (!Number.isInteger(correct)) {
     correct = await solveImages(images);
-    if (!Number.isInteger(correct)) return { status: 502, body: { error: 'Could not explain that question.' } };
+    if (!Number.isInteger(correct)) return { status: 502, body: { error: explainFailure() } };
     answers[id] = correct;
     writeAnswers(answers);
   }
   const explanation = await explainImages(images, correct);
-  if (!explanation) return { status: 502, body: { error: 'Could not explain that question.' } };
+  if (!explanation) return { status: 502, body: { error: explainFailure() } };
   const formatted = formatLines(explanation);
   saved[id] = formatted;
   writeJson(EXPLANATIONS, saved);
@@ -892,6 +892,12 @@ function formatLines(text) {
     }
   }
   return out;
+}
+
+function explainFailure() {
+  if (!process.env.GEMINI_API_KEY) return 'Gemini is not set up on this server.';
+  if (geminiStopped) return 'Gemini credits are used up, so this explanation cannot be written yet.';
+  return 'Could not explain that question.';
 }
 
 async function explainImages(images, correct) {
