@@ -10,6 +10,7 @@ const INDEX = path.join(ROOT, 'index.json');
 const ANSWERS = path.join(ROOT, 'answers.json');
 const EXPLANATIONS = path.join(ROOT, 'explanations.json');
 const CHOICES = path.join(ROOT, 'choices.json');
+const READINGS = path.join(ROOT, 'readings.json');
 const TOPICS = path.join(ROOT, 'topics.json');
 const RENDER = path.join(ROOT, 'render');
 const SYLLABUS = {
@@ -112,6 +113,7 @@ export async function makeJeeQuiz({ year, subject, count, topic }) {
   const size = Math.min(pool.length, Math.max(1, Math.floor(Number(count)) || 10));
   const answers = readAnswers();
   const choiceBank = readJson(CHOICES);
+  const readings = readJson(READINGS);
   const ready = shuffle(pool.filter((item) => Number.isInteger(answers[item.id])));
   const fresh = shuffle(pool.filter((item) => !Number.isInteger(answers[item.id])));
   const selected = ready.slice(0, size);
@@ -120,7 +122,7 @@ export async function makeJeeQuiz({ year, subject, count, topic }) {
   const questions = [];
   for (const item of selected) {
     if (!hasRender(item.id)) continue;
-    questions.push(questionPayload(item, answers[item.id], choiceBank[item.id]));
+    questions.push(questionPayload(item, answers[item.id], choiceBank[item.id], readings[item.id]));
   }
   let cursor = 0;
   async function solveOne() {
@@ -131,7 +133,7 @@ export async function makeJeeQuiz({ year, subject, count, topic }) {
       const correct = await solveImages(await readRender(item.id));
       if (!Number.isInteger(correct) || questions.length >= size) continue;
       answers[item.id] = correct;
-      questions.push(questionPayload(item, correct, choiceBank[item.id]));
+      questions.push(questionPayload(item, correct, choiceBank[item.id], readings[item.id]));
     }
   }
   if (questions.length < size) await Promise.all([solveOne(), solveOne(), solveOne()]);
@@ -502,15 +504,23 @@ function hasRender(id) {
   return Boolean(jeeImageFile(id, 'stem') && jeeImageFile(id, '0') && jeeImageFile(id, '1') && jeeImageFile(id, '2') && jeeImageFile(id, '3'));
 }
 
-function questionPayload(item, correct, savedChoices) {
-  const choices = isChoiceList(savedChoices) ? savedChoices : ['FIGURE', 'FIGURE', 'FIGURE', 'FIGURE'];
+function questionPayload(item, correct, savedChoices, reading) {
+  const fromReading = isChoiceList(reading?.options) ? reading.options : null;
+  const choices = textChoices(fromReading) || textChoices(savedChoices);
   return {
     id: item.id,
     stem: `/api/jee/image/${item.id}/stem`,
+    ...(typeof reading?.stem === 'string' && reading.stem.trim() ? { stemText: reading.stem.trim() } : {}),
+    ...(reading?.diagram ? { diagram: true } : {}),
     options: [0, 1, 2, 3].map((index) => `/api/jee/image/${item.id}/${index}`),
-    choices,
+    ...(choices ? { choices } : {}),
     correct,
   };
+}
+
+function textChoices(value) {
+  if (!isChoiceList(value) || value.some((item) => item === 'FIGURE')) return null;
+  return value;
 }
 
 async function readRender(id) {
@@ -908,6 +918,82 @@ export async function explainJeeQuestion(id) {
 }
 
 const choiceJobs = new Map();
+
+const readingJobs = new Map();
+
+export function readJeeQuestion(id) {
+  if (readingJobs.has(id)) return readingJobs.get(id);
+  const job = loadReading(id).finally(() => readingJobs.delete(id));
+  readingJobs.set(id, job);
+  return job;
+}
+
+async function loadReading(id) {
+  if (!/^\d{4}\/[^/]+\/(Physics|Chemistry|Mathematics)\/\d+$/.test(id)) {
+    return { status: 400, body: { error: 'That question was not found.' } };
+  }
+  const saved = readJson(READINGS);
+  if (isReading(saved[id])) return { status: 200, body: saved[id] };
+  const index = await ensureIndex();
+  const record = index.questions.find((item) => item.id === id);
+  if (!record) return { status: 404, body: { error: 'That question was not found.' } };
+  let images = null;
+  if (hasRender(id)) images = await readRender(id);
+  else {
+    try {
+      images = await imagesFor(record);
+    } catch {
+      images = null;
+    }
+  }
+  if (!images) return { status: 502, body: { error: 'Could not read that question.' } };
+  const reading = await transcribeQuestion(images);
+  if (!reading) return { status: 502, body: { error: explainFailure() } };
+  saved[id] = reading;
+  writeJson(READINGS, saved);
+  const choices = readJson(CHOICES);
+  choices[id] = reading.options;
+  writeJson(CHOICES, choices);
+  return { status: 200, body: reading };
+}
+
+function isReading(value) {
+  return Boolean(value && typeof value.stem === 'string' && value.stem.trim() && textChoices(value.options));
+}
+
+async function transcribeQuestion(images) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  const parts = [images.stem, ...images.options].map((png) => ({
+    inline_data: { mime_type: 'image/png', data: png.toString('base64') },
+  }));
+  parts.push({
+    text: [
+      'The first image is one JEE Main question. The next four images are options A, B, C and D, in that order.',
+      'Rewrite the question and the four options as text a student can read, the way a normal multiple-choice question is printed.',
+      'Write every formula between dollar signs, for example $f = 20\\text{ cm}$.',
+      'Leave ordinary words as words. Do not add an explanation.',
+      'Write every option the same way: words, or a formula between dollar signs. A chemical structure is its formula or name. A graph is a short description.',
+      'Set diagram to true only when the question itself has a figure that cannot be replaced by words.',
+      'Return JSON {"stem":"...","options":["...","...","...","..."],"diagram":false}.',
+    ].join('\n'),
+  });
+  const text = await geminiText(apiKey, parts);
+  if (!text) return null;
+  const parsed = parseGeminiJson(text);
+  const stem = typeof parsed?.stem === 'string' ? parsed.stem.replace(/\s+/g, ' ').trim() : '';
+  const options = parsed?.options;
+  if (!stem || !Array.isArray(options) || options.length !== 4) return null;
+  const choices = options.map((item) => {
+    if (typeof item !== 'string') return '';
+    const value = item.replace(/\s+/g, ' ').trim();
+    if (!value || value.length > 600) return '';
+    if (/^(figure|diagram|graph|image)$/i.test(value)) return '';
+    return value;
+  });
+  if (!choices.every(Boolean)) return null;
+  return { stem: stem.slice(0, 2000), options: choices, diagram: Boolean(parsed.diagram) };
+}
 
 export function jeeChoices(id) {
   if (choiceJobs.has(id)) return choiceJobs.get(id);

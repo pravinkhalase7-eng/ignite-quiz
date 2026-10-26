@@ -4,36 +4,27 @@ import 'katex/dist/katex.min.css';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, Trophy, XCircle } from '@phosphor-icons/react';
 import { Dialog } from '../components/Dialog';
-import { explainJeeQuestion, loadJeeChoices, loadJeePack, saveJeePack, startJeeQuiz, type JeePack, type JeeQuestion } from '../lib/jeeQuiz';
+import { explainJeeQuestion, loadJeePack, loadJeeReading, saveJeePack, startJeeQuiz, type JeePack, type JeeQuestion, type JeeReading } from '../lib/jeeQuiz';
 import { playAnswerSound, vibrateError } from '../lib/sound';
 
 const PASS_PERCENT = 80;
 const LETTERS = ['A', 'B', 'C', 'D'];
 
-function fitStemImage(event: { currentTarget: HTMLImageElement }) {
-  const img = event.currentTarget;
-  const box = img.parentElement?.clientWidth ?? img.naturalWidth;
-  img.style.width = `${Math.max(box, img.naturalWidth)}px`;
-  img.style.height = 'auto';
-}
-
-function fitOptionImage(event: { currentTarget: HTMLImageElement }) {
-  const img = event.currentTarget;
-  img.style.height = `${img.naturalHeight}px`;
-  img.style.width = 'auto';
-}
-
 const notes = new Map<string, string>();
-const choiceCache = new Map<string, Promise<string[]>>();
+const readingCache = new Map<string, Promise<JeeReading>>();
 
-function rememberChoices(id: string) {
-  const pending = choiceCache.get(id);
+function textChoices(choices?: string[]) {
+  return choices?.length === 4 && choices.every((item) => item && item !== 'FIGURE') ? choices : null;
+}
+
+function rememberReading(id: string) {
+  const pending = readingCache.get(id);
   if (pending) return pending;
-  const next = loadJeeChoices(id).catch((error: unknown) => {
-    choiceCache.delete(id);
+  const next = loadJeeReading(id).catch((error: unknown) => {
+    readingCache.delete(id);
     throw error;
   });
-  choiceCache.set(id, next);
+  readingCache.set(id, next);
   return next;
 }
 
@@ -52,33 +43,38 @@ function QuestionCard({
   feedback: 'ok' | 'bad' | null;
   onSelect: (index: number) => void;
 }) {
-  const readyChoices = question.choices?.length === 4 ? question.choices : null;
+  const readyChoices = textChoices(question.choices);
+  const [stemText, setStemText] = useState(question.stemText || '');
+  const [diagram, setDiagram] = useState(Boolean(question.diagram));
   const [choices, setChoices] = useState<string[] | null>(readyChoices);
-  const [waiting, setWaiting] = useState(!readyChoices && Boolean(question.id));
+  const [waiting, setWaiting] = useState(!question.stemText && Boolean(question.id));
 
   useEffect(() => {
     let cancel = false;
-    if (question.choices?.length === 4) {
-      setChoices(question.choices);
+    if (question.stemText && textChoices(question.choices)) {
+      setStemText(question.stemText);
+      setDiagram(Boolean(question.diagram));
+      setChoices(textChoices(question.choices));
       setWaiting(false);
     } else if (question.id) {
       setChoices(null);
       setWaiting(true);
-      rememberChoices(question.id)
+      rememberReading(question.id)
         .then((next) => {
           if (cancel) return;
-          setChoices(next);
+          setStemText(next.stem);
+          setDiagram(Boolean(next.diagram));
+          setChoices(next.options);
           setWaiting(false);
         })
         .catch(() => {
           if (cancel) return;
-          setChoices(null);
           setWaiting(false);
         });
     } else {
       setWaiting(false);
     }
-    if (nextId) rememberChoices(nextId).catch(() => {});
+    if (nextId) rememberReading(nextId).catch(() => {});
     return () => {
       cancel = true;
     };
@@ -86,13 +82,10 @@ function QuestionCard({
 
   return (
     <article className={`question-card ${shake ? 'shake' : ''}`}>
-      <div className="jee-stem-wrap">
-        <img className="jee-stem" src={question.stem} alt="Question" onLoad={fitStemImage} />
-      </div>
+      <QuestionStem text={stemText} diagram={diagram} image={question.stem} waiting={waiting} />
       <Explanation key={question.id} id={question.id} />
-      {question.options.map((option, optionIndex) => {
-        const label = choices?.[optionIndex];
-        const figure = !label || label === 'FIGURE';
+      {question.options.map((_, optionIndex) => {
+        const label = textChoices(choices || undefined)?.[optionIndex];
         return (
           <button
             key={optionIndex}
@@ -103,12 +96,10 @@ function QuestionCard({
             onClick={() => onSelect(optionIndex)}
           >
             <span className="jee-letter">{LETTERS[optionIndex]}</span>
-            {waiting ? (
-              <span className="jee-choice-wait">Reading…</span>
-            ) : figure ? (
-              <img src={option} alt="" onLoad={fitOptionImage} />
-            ) : (
+            {label ? (
               <MathText text={label} className="jee-choice" />
+            ) : (
+              <span className="jee-choice-wait">{waiting ? 'Reading…' : '…'}</span>
             )}
             <span className="check" aria-hidden="true">
               <i />
@@ -117,6 +108,16 @@ function QuestionCard({
         );
       })}
     </article>
+  );
+}
+
+function QuestionStem({ text, diagram, image, waiting }: { text: string; diagram: boolean; image: string; waiting: boolean }) {
+  if (waiting && !text) return <p className="jee-question">Reading the question…</p>;
+  return (
+    <>
+      {text ? <MathText text={text} className="jee-question" /> : null}
+      {diagram || !text ? <img className="jee-diagram" src={image} alt="" /> : null}
+    </>
   );
 }
 
@@ -165,21 +166,30 @@ function ReviewCard({
   number: number;
   chosen: number | null | undefined;
 }) {
-  const ready = question.choices?.length === 4 ? question.choices : null;
+  const ready = textChoices(question.choices);
+  const [stemText, setStemText] = useState(question.stemText || '');
+  const [diagram, setDiagram] = useState(Boolean(question.diagram));
   const [choices, setChoices] = useState<string[] | null>(ready);
-  const [waiting, setWaiting] = useState(!ready && Boolean(question.id));
+  const [waiting, setWaiting] = useState(!question.stemText && Boolean(question.id));
 
   useEffect(() => {
-    if (ready || !question.id) {
+    if (question.stemText && ready) {
+      setWaiting(false);
+      return;
+    }
+    if (!question.id) {
       setWaiting(false);
       return;
     }
     let cancel = false;
+    setChoices(null);
     setWaiting(true);
-    rememberChoices(question.id)
+    rememberReading(question.id)
       .then((next) => {
         if (cancel) return;
-        setChoices(next);
+        setStemText(next.stem);
+        setDiagram(Boolean(next.diagram));
+        setChoices(next.options);
         setWaiting(false);
       })
       .catch(() => {
@@ -188,7 +198,7 @@ function ReviewCard({
     return () => {
       cancel = true;
     };
-  }, [question.id, ready]);
+  }, [question.id, question.stemText, ready]);
 
   const skipped = chosen === null || chosen === undefined;
   const wasCorrect = chosen === question.correct;
@@ -196,16 +206,13 @@ function ReviewCard({
   return (
     <article className="review-card">
       <p className="review-index">Question {number}</p>
-      <div className="jee-stem-wrap">
-        <img className="jee-stem" src={question.stem} alt="" onLoad={fitStemImage} />
-      </div>
+      <QuestionStem text={stemText} diagram={diagram} image={question.stem} waiting={waiting} />
       <Explanation id={question.id} />
       <AnswerLine
         tone="correct"
         label="Correct answer"
         letter={LETTERS[question.correct]}
         text={choices?.[question.correct]}
-        image={question.options[question.correct]}
         waiting={waiting}
       />
       {!wasCorrect &&
@@ -217,7 +224,6 @@ function ReviewCard({
             label="Your answer"
             letter={LETTERS[chosen]}
             text={choices?.[chosen]}
-            image={question.options[chosen]}
             waiting={waiting}
           />
         ))}
@@ -230,29 +236,25 @@ function AnswerLine({
   label,
   letter,
   text,
-  image,
   waiting,
 }: {
   tone: 'correct' | 'wrong';
   label: string;
   letter: string;
   text?: string;
-  image?: string;
   waiting: boolean;
 }) {
-  const figure = !text || text === 'FIGURE';
+  const written = text && text !== 'FIGURE' ? text : '';
   return (
     <div className={`answer-choice ${tone}`}>
       <span>
         {label} · {letter}
       </span>
-      {waiting ? (
-        <span className="jee-choice-wait">Reading…</span>
-      ) : text && !figure ? (
-        <MathText text={text} className="jee-answer-math" />
-      ) : image ? (
-        <img className="jee-answer-image" src={image} alt="" onLoad={fitOptionImage} />
-      ) : null}
+      {written ? (
+        <MathText text={written} className="jee-answer-math" />
+      ) : (
+        <span className="jee-choice-wait">{waiting ? 'Reading…' : '…'}</span>
+      )}
     </div>
   );
 }

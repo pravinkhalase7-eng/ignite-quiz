@@ -393,37 +393,45 @@ button, a { font-family: inherit; }
   cursor: default;
 }
 
-.jee-stem-wrap {
-  margin: 0 0 16px;
-  overflow-x: auto;
-  border-radius: 8px;
-  background: white;
-  touch-action: pan-x pan-y;
+.jee-question {
+  margin: 0 0 18px;
+  max-width: 100%;
+  color: var(--grey-100);
+  font-size: 18px;
+  line-height: 1.5;
+  text-align: left;
+  overflow-wrap: anywhere;
 }
 
-.jee-stem {
+.jee-question .katex {
+  color: var(--grey-100);
+  font-size: 1.15em;
+}
+
+.jee-diagram {
   display: block;
-  width: auto;
-  max-width: none;
+  width: 100%;
   height: auto;
-  margin: 0;
-  padding: 12px;
+  margin: 0 0 16px;
+  border-radius: 8px;
   background: white;
 }
 
 .option.jee-option {
-  overflow-x: auto;
+  overflow: hidden;
 }
 
 .option.jee-option > .jee-letter {
   flex: 0 0 auto;
 }
 
-.jee-option img {
-  flex: 0 0 auto;
+.jee-option img,
+.jee-answer-image {
+  flex: 0 1 auto;
   width: auto;
   height: auto;
-  max-width: none;
+  max-width: 100%;
+  max-height: 88px;
   object-fit: contain;
   background: white;
   border-radius: 4px;
@@ -478,11 +486,11 @@ button, a { font-family: inherit; }
 .jee-choice {
   flex: 1;
   min-width: 0;
-  overflow-x: auto;
   color: var(--grey-100);
   font-size: 18px;
   line-height: 1.45;
   text-align: left;
+  overflow-wrap: anywhere;
 }
 
 .jee-choice .katex {

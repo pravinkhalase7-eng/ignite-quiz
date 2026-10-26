@@ -19,7 +19,7 @@ import {
   saveStory,
   sessionCookie,
 } from './account.mjs';
-import { explainJeeQuestion, jeeCatalog, jeeChoices, jeeImageFile, jeeTopics, makeJeeQuiz } from './jee-bank.mjs';
+import { explainJeeQuestion, jeeCatalog, jeeChoices, jeeImageFile, jeeTopics, makeJeeQuiz, readJeeQuestion } from './jee-bank.mjs';
 
 const DATA = process.env.QUIZ_DATA || path.join(process.cwd(), 'data', 'quizzes.json');
 const STORIES = process.env.STORY_DATA || path.join(process.cwd(), 'data', 'stories.json');
@@ -169,6 +169,22 @@ export function quizApi(req, res, next) {
       jeeTopics({ year: body.year, subject: body.subject })
         .then((result) => sendJson(res, result.status, result.body))
         .catch(() => sendJson(res, 500, { error: 'Could not group those questions.' }));
+    });
+    return;
+  }
+
+  if (url === '/api/jee/read' && req.method === 'POST') {
+    readBody(req, res, (raw) => {
+      let body;
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        sendJson(res, 400, { error: 'Invalid request.' });
+        return;
+      }
+      readJeeQuestion(String(body.id || ''))
+        .then((result) => sendJson(res, result.status, result.body))
+        .catch(() => sendJson(res, 500, { error: 'Could not read that question.' }));
     });
     return;
   }

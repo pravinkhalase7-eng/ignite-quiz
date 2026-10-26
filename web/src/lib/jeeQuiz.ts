@@ -1,9 +1,17 @@
 export type JeeQuestion = {
   id?: string;
   stem: string;
+  stemText?: string;
+  diagram?: boolean;
   options: string[];
   choices?: string[];
   correct: number;
+};
+
+export type JeeReading = {
+  stem: string;
+  options: string[];
+  diagram?: boolean;
 };
 
 export type JeePack = {
@@ -57,6 +65,19 @@ export async function startJeeQuiz(year: string, subject: string, count: number,
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || 'Could not start that quiz.');
   return body as JeePack;
+}
+
+export async function loadJeeReading(id: string): Promise<JeeReading> {
+  const response = await fetch('/api/jee/read', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
+  const body = (await response.json().catch(() => ({}))) as Partial<JeeReading> & { error?: string };
+  if (!response.ok || typeof body.stem !== 'string' || !Array.isArray(body.options) || body.options.length !== 4) {
+    throw new Error(body.error || 'Could not read that question.');
+  }
+  return { stem: body.stem, options: body.options, diagram: Boolean(body.diagram) };
 }
 
 export async function loadJeeChoices(id: string): Promise<string[]> {
