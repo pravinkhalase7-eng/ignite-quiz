@@ -12,18 +12,30 @@ const LETTERS = ['A', 'B', 'C', 'D'];
 
 const notes = new Map<string, string>();
 const readingCache = new Map<string, Promise<JeeReading>>();
+const readyReadings = new Map<string, JeeReading>();
 
 function textChoices(choices?: string[]) {
   return choices?.length === 4 && choices.every((item) => item && item !== 'FIGURE') ? choices : null;
 }
 
+function cachedReading(id?: string) {
+  return id ? readyReadings.get(id) : undefined;
+}
+
 function rememberReading(id: string) {
+  const saved = readyReadings.get(id);
+  if (saved) return Promise.resolve(saved);
   const pending = readingCache.get(id);
   if (pending) return pending;
-  const next = loadJeeReading(id).catch((error: unknown) => {
-    readingCache.delete(id);
-    throw error;
-  });
+  const next = loadJeeReading(id)
+    .then((reading) => {
+      readyReadings.set(id, reading);
+      return reading;
+    })
+    .catch((error: unknown) => {
+      readingCache.delete(id);
+      throw error;
+    });
   readingCache.set(id, next);
   return next;
 }
@@ -43,18 +55,23 @@ function QuestionCard({
   feedback: 'ok' | 'bad' | null;
   onSelect: (index: number) => void;
 }) {
-  const readyChoices = textChoices(question.choices);
-  const [stemText, setStemText] = useState(question.stemText || '');
-  const [diagram, setDiagram] = useState(Boolean(question.diagram));
+  const saved = cachedReading(question.id);
+  const readyChoices = textChoices(saved?.options) || textChoices(question.choices);
+  const initialStem = saved?.stem || question.stemText || '';
+  const [stemText, setStemText] = useState(initialStem);
+  const [diagram, setDiagram] = useState(Boolean(saved?.diagram ?? question.diagram));
   const [choices, setChoices] = useState<string[] | null>(readyChoices);
-  const [waiting, setWaiting] = useState(!question.stemText && Boolean(question.id));
+  const [waiting, setWaiting] = useState(!initialStem && Boolean(question.id));
 
   useEffect(() => {
     let cancel = false;
-    if (question.stemText && textChoices(question.choices)) {
-      setStemText(question.stemText);
-      setDiagram(Boolean(question.diagram));
-      setChoices(textChoices(question.choices));
+    const known = cachedReading(question.id);
+    const knownStem = known?.stem || question.stemText || '';
+    const knownChoices = textChoices(known?.options) || textChoices(question.choices);
+    if (knownStem && knownChoices) {
+      setStemText(knownStem);
+      setDiagram(Boolean(known?.diagram ?? question.diagram));
+      setChoices(knownChoices);
       setWaiting(false);
     } else if (question.id) {
       setChoices(null);
@@ -166,14 +183,22 @@ function ReviewCard({
   number: number;
   chosen: number | null | undefined;
 }) {
-  const ready = textChoices(question.choices);
-  const [stemText, setStemText] = useState(question.stemText || '');
-  const [diagram, setDiagram] = useState(Boolean(question.diagram));
+  const saved = cachedReading(question.id);
+  const ready = textChoices(saved?.options) || textChoices(question.choices);
+  const initialStem = saved?.stem || question.stemText || '';
+  const [stemText, setStemText] = useState(initialStem);
+  const [diagram, setDiagram] = useState(Boolean(saved?.diagram ?? question.diagram));
   const [choices, setChoices] = useState<string[] | null>(ready);
-  const [waiting, setWaiting] = useState(!question.stemText && Boolean(question.id));
+  const [waiting, setWaiting] = useState(!initialStem && Boolean(question.id));
 
   useEffect(() => {
-    if (question.stemText && ready) {
+    const known = cachedReading(question.id);
+    const knownStem = known?.stem || question.stemText || '';
+    const knownChoices = textChoices(known?.options) || textChoices(question.choices);
+    if (knownStem && knownChoices) {
+      setStemText(knownStem);
+      setDiagram(Boolean(known?.diagram ?? question.diagram));
+      setChoices(knownChoices);
       setWaiting(false);
       return;
     }
@@ -198,7 +223,7 @@ function ReviewCard({
     return () => {
       cancel = true;
     };
-  }, [question.id, question.stemText, ready]);
+  }, [question.id, question.stemText, question.diagram, question.choices, ready]);
 
   const skipped = chosen === null || chosen === undefined;
   const wasCorrect = chosen === question.correct;
@@ -319,6 +344,44 @@ export function JeePlayPage() {
   const [dialog, setDialog] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const packIds = pack?.questions.map((item) => item.id || '').join('|') ?? '';
+
+  useEffect(() => {
+    if (!packIds) return;
+    let cancel = false;
+    const ids = packIds.split('|').filter(Boolean);
+    let cursor = 0;
+    async function pull() {
+      while (!cancel) {
+        const id = ids[cursor];
+        cursor += 1;
+        if (!id) return;
+        try {
+          const reading = await rememberReading(id);
+          if (cancel) return;
+          setPack((current) => {
+            if (!current) return current;
+            let changed = false;
+            const questions = current.questions.map((item) => {
+              if (item.id !== id || (item.stemText && textChoices(item.choices))) return item;
+              changed = true;
+              return { ...item, stemText: reading.stem, choices: reading.options, diagram: Boolean(reading.diagram) };
+            });
+            if (!changed) return current;
+            const nextPack = { ...current, questions };
+            saveJeePack(nextPack);
+            return nextPack;
+          });
+        } catch {
+          // This question stays on the card, which asks for the reading again.
+        }
+      }
+    }
+    void Promise.all([pull(), pull(), pull()]);
+    return () => {
+      cancel = true;
+    };
+  }, [packIds]);
 
   if (!pack) {
     return (
