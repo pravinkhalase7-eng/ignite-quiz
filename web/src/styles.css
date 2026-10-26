@@ -393,18 +393,26 @@ button, a { font-family: inherit; }
   cursor: default;
 }
 
+.jee-stem-wrap {
+  margin: 0 0 16px;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: white;
+  touch-action: pan-x pan-y;
+}
+
 .jee-stem {
   display: block;
-  width: 100%;
+  width: auto;
+  max-width: none;
   height: auto;
-  margin: 0 0 16px;
-  padding: 10px;
-  border-radius: 8px;
+  margin: 0;
+  padding: 12px;
   background: white;
 }
 
 .option.jee-option {
-  overflow: hidden;
+  overflow-x: auto;
 }
 
 .option.jee-option > .jee-letter {
@@ -412,11 +420,10 @@ button, a { font-family: inherit; }
 }
 
 .jee-option img {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
   width: auto;
   height: auto;
-  max-width: calc(100% - 70px);
+  max-width: none;
   object-fit: contain;
   background: white;
   border-radius: 4px;
@@ -462,7 +469,7 @@ button, a { font-family: inherit; }
   border-radius: 8px;
   background: white;
   color: #1c1c1c;
-  font-size: 15px;
+  font-size: 18px;
   line-height: 1.7;
   white-space: pre-wrap;
   overflow-x: auto;
@@ -473,7 +480,7 @@ button, a { font-family: inherit; }
   min-width: 0;
   overflow-x: auto;
   color: var(--grey-100);
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1.45;
   text-align: left;
 }
@@ -490,7 +497,7 @@ button, a { font-family: inherit; }
 }
 
 .jee-explanation .katex {
-  font-size: 1.05em;
+  font-size: 1.2em;
   color: #1c1c1c;
 }
 

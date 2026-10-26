@@ -10,9 +10,16 @@ import { playAnswerSound, vibrateError } from '../lib/sound';
 const PASS_PERCENT = 80;
 const LETTERS = ['A', 'B', 'C', 'D'];
 
+function fitStemImage(event: { currentTarget: HTMLImageElement }) {
+  const img = event.currentTarget;
+  const box = img.parentElement?.clientWidth ?? img.naturalWidth;
+  img.style.width = `${Math.max(box, img.naturalWidth)}px`;
+  img.style.height = 'auto';
+}
+
 function fitOptionImage(event: { currentTarget: HTMLImageElement }) {
   const img = event.currentTarget;
-  img.style.height = `${Math.round(img.naturalHeight / 2)}px`;
+  img.style.height = `${img.naturalHeight}px`;
   img.style.width = 'auto';
 }
 
@@ -79,7 +86,9 @@ function QuestionCard({
 
   return (
     <article className={`question-card ${shake ? 'shake' : ''}`}>
-      <img className="jee-stem" src={question.stem} alt="Question" />
+      <div className="jee-stem-wrap">
+        <img className="jee-stem" src={question.stem} alt="Question" onLoad={fitStemImage} />
+      </div>
       <Explanation key={question.id} id={question.id} />
       {question.options.map((option, optionIndex) => {
         const label = choices?.[optionIndex];
@@ -187,7 +196,9 @@ function ReviewCard({
   return (
     <article className="review-card">
       <p className="review-index">Question {number}</p>
-      <img className="jee-stem" src={question.stem} alt="" />
+      <div className="jee-stem-wrap">
+        <img className="jee-stem" src={question.stem} alt="" onLoad={fitStemImage} />
+      </div>
       <Explanation id={question.id} />
       <AnswerLine
         tone="correct"
