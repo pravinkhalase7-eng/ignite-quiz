@@ -1118,6 +1118,7 @@ async function geminiText(apiKey, parts) {
           contents: [{ parts }],
           generationConfig: { temperature: 0, responseMimeType: 'application/json' },
         }),
+        signal: AbortSignal.timeout(25000),
       },
     );
     const data = await response.json().catch(() => ({}));

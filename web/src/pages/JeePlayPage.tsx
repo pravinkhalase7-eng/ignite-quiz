@@ -61,7 +61,6 @@ function QuestionCard({
   const [stemText, setStemText] = useState(initialStem);
   const [diagram, setDiagram] = useState(Boolean(saved?.diagram ?? question.diagram));
   const [choices, setChoices] = useState<string[] | null>(readyChoices);
-  const [waiting, setWaiting] = useState(!initialStem && Boolean(question.id));
 
   useEffect(() => {
     let cancel = false;
@@ -72,24 +71,15 @@ function QuestionCard({
       setStemText(knownStem);
       setDiagram(Boolean(known?.diagram ?? question.diagram));
       setChoices(knownChoices);
-      setWaiting(false);
     } else if (question.id) {
-      setChoices(null);
-      setWaiting(true);
       rememberReading(question.id)
         .then((next) => {
           if (cancel) return;
           setStemText(next.stem);
           setDiagram(Boolean(next.diagram));
           setChoices(next.options);
-          setWaiting(false);
         })
-        .catch(() => {
-          if (cancel) return;
-          setWaiting(false);
-        });
-    } else {
-      setWaiting(false);
+        .catch(() => {});
     }
     if (nextId) rememberReading(nextId).catch(() => {});
     return () => {
@@ -99,9 +89,9 @@ function QuestionCard({
 
   return (
     <article className={`question-card ${shake ? 'shake' : ''}`}>
-      <QuestionStem text={stemText} diagram={diagram} image={question.stem} waiting={waiting} />
+      <QuestionStem text={stemText} diagram={diagram} image={question.stem} />
       <Explanation key={question.id} id={question.id} />
-      {question.options.map((_, optionIndex) => {
+      {question.options.map((option, optionIndex) => {
         const label = textChoices(choices || undefined)?.[optionIndex];
         return (
           <button
@@ -113,11 +103,7 @@ function QuestionCard({
             onClick={() => onSelect(optionIndex)}
           >
             <span className="jee-letter">{LETTERS[optionIndex]}</span>
-            {label ? (
-              <MathText text={label} className="jee-choice" />
-            ) : (
-              <span className="jee-choice-wait">{waiting ? 'Reading…' : '…'}</span>
-            )}
+            {label ? <MathText text={label} className="jee-choice" /> : <img src={option} alt="" />}
             <span className="check" aria-hidden="true">
               <i />
             </span>
@@ -128,12 +114,11 @@ function QuestionCard({
   );
 }
 
-function QuestionStem({ text, diagram, image, waiting }: { text: string; diagram: boolean; image: string; waiting: boolean }) {
-  if (waiting && !text) return <p className="jee-question">Reading the question…</p>;
+function QuestionStem({ text, diagram, image }: { text: string; diagram: boolean; image: string }) {
   return (
     <>
-      {text ? <MathText text={text} className="jee-question" /> : null}
-      {diagram || !text ? <img className="jee-diagram" src={image} alt="" /> : null}
+      {text ? <MathText text={text} className="jee-question" /> : <img className="jee-diagram" src={image} alt="" />}
+      {text && diagram ? <img className="jee-diagram" src={image} alt="" /> : null}
     </>
   );
 }
@@ -189,7 +174,6 @@ function ReviewCard({
   const [stemText, setStemText] = useState(initialStem);
   const [diagram, setDiagram] = useState(Boolean(saved?.diagram ?? question.diagram));
   const [choices, setChoices] = useState<string[] | null>(ready);
-  const [waiting, setWaiting] = useState(!initialStem && Boolean(question.id));
 
   useEffect(() => {
     const known = cachedReading(question.id);
@@ -199,27 +183,18 @@ function ReviewCard({
       setStemText(knownStem);
       setDiagram(Boolean(known?.diagram ?? question.diagram));
       setChoices(knownChoices);
-      setWaiting(false);
       return;
     }
-    if (!question.id) {
-      setWaiting(false);
-      return;
-    }
+    if (!question.id) return;
     let cancel = false;
-    setChoices(null);
-    setWaiting(true);
     rememberReading(question.id)
       .then((next) => {
         if (cancel) return;
         setStemText(next.stem);
         setDiagram(Boolean(next.diagram));
         setChoices(next.options);
-        setWaiting(false);
       })
-      .catch(() => {
-        if (!cancel) setWaiting(false);
-      });
+      .catch(() => {});
     return () => {
       cancel = true;
     };
@@ -231,14 +206,14 @@ function ReviewCard({
   return (
     <article className="review-card">
       <p className="review-index">Question {number}</p>
-      <QuestionStem text={stemText} diagram={diagram} image={question.stem} waiting={waiting} />
+      <QuestionStem text={stemText} diagram={diagram} image={question.stem} />
       <Explanation id={question.id} />
       <AnswerLine
         tone="correct"
         label="Correct answer"
         letter={LETTERS[question.correct]}
         text={choices?.[question.correct]}
-        waiting={waiting}
+        image={question.options[question.correct]}
       />
       {!wasCorrect &&
         (skipped ? (
@@ -249,7 +224,7 @@ function ReviewCard({
             label="Your answer"
             letter={LETTERS[chosen]}
             text={choices?.[chosen]}
-            waiting={waiting}
+            image={question.options[chosen]}
           />
         ))}
     </article>
@@ -261,13 +236,13 @@ function AnswerLine({
   label,
   letter,
   text,
-  waiting,
+  image,
 }: {
   tone: 'correct' | 'wrong';
   label: string;
   letter: string;
   text?: string;
-  waiting: boolean;
+  image?: string;
 }) {
   const written = text && text !== 'FIGURE' ? text : '';
   return (
@@ -275,11 +250,7 @@ function AnswerLine({
       <span>
         {label} · {letter}
       </span>
-      {written ? (
-        <MathText text={written} className="jee-answer-math" />
-      ) : (
-        <span className="jee-choice-wait">{waiting ? 'Reading…' : '…'}</span>
-      )}
+      {written ? <MathText text={written} className="jee-answer-math" /> : image ? <img className="jee-answer-image" src={image} alt="" /> : null}
     </div>
   );
 }
@@ -377,7 +348,7 @@ export function JeePlayPage() {
         }
       }
     }
-    void Promise.all([pull(), pull(), pull()]);
+    void pull();
     return () => {
       cancel = true;
     };
